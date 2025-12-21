@@ -1,0 +1,8 @@
+[install]
+# Use bun's fast package installation
+cache = true
+exact = true
+
+[install.lockfile]
+# Save exact versions
+save = true
