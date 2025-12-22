@@ -18,7 +18,7 @@ import { SettingsDoodle } from '@/components/doodles/SettingsDoodle';
 
 export default function OrganizationSetupPage() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, refreshUser } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [formData, setFormData] = useState({
@@ -47,6 +47,9 @@ export default function OrganizationSetupPage() {
                 domain: formData.domain || undefined,
                 userId: user.id,
             });
+
+            // Refresh user to get updated organizationId
+            await refreshUser();
 
             // Redirect to dashboard after successful setup
             router.push('/dashboard');

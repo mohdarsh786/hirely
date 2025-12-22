@@ -18,6 +18,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   hasRole: (roles: Role[]) => boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -117,8 +118,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roles.includes(user.role);
   };
 
+  const refreshUser = async () => {
+    const { data } = await getUser();
+    if (data?.user) {
+      let organizationId: string | undefined;
+      try {
+        const orgData = await api.organizations.getMyOrg();
+        organizationId = orgData.organization?.id;
+      } catch {
+        // Ignore
+      }
+
+      setUser({
+        id: data.user.id,
+        email: data.user.email ?? null,
+        role: extractRole(data.user),
+        organizationId,
+      });
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasRole }}>
+    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasRole, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
