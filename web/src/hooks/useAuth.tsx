@@ -45,7 +45,6 @@ function extractRole(user: any): Role | null {
 
 import { api } from '@/lib/api';
 
-// Browser-only storage helper
 const storage = {
   get: (key: string): string | null => {
     if (typeof window === 'undefined') return null;
@@ -59,17 +58,13 @@ const storage = {
     if (typeof window === 'undefined') return;
     try {
       sessionStorage.setItem(key, value);
-    } catch {
-      // Ignore
-    }
+    } catch {}
   },
   remove: (key: string): void => {
     if (typeof window === 'undefined') return;
     try {
       sessionStorage.removeItem(key);
-    } catch {
-      // Ignore
-    }
+    } catch {}
   },
 };
 
@@ -81,7 +76,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
     
-    // Get initial session
     const initAuth = async () => {
       try {
         const { data } = await getUser();
@@ -90,7 +84,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data?.user) {
           let organizationId: string | undefined;
           
-          // Cache organization ID to avoid repeated API calls
           const cachedOrgId = storage.get('org_id');
           if (cachedOrgId) {
             organizationId = cachedOrgId;
@@ -101,9 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (organizationId) {
                 storage.set('org_id', organizationId);
               }
-            } catch {
-              // Ignore
-            }
+            } catch {}
           }
 
           if (mounted) {
@@ -126,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initAuth();
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -137,7 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data?.user && mounted) {
           let organizationId: string | undefined;
           
-          // Use cached org ID
           const cachedOrgId = storage.get('org_id');
           if (cachedOrgId) {
             organizationId = cachedOrgId;
@@ -148,9 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (organizationId) {
                 storage.set('org_id', organizationId);
               }
-            } catch (e) {
-              // Ignore
-            }
+            } catch (e) {}
           }
 
           if (mounted) {
@@ -175,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    storage.remove('org_id'); // Clear cache
+    storage.remove('org_id');
     setUser(null);
     router.push('/login');
   };
@@ -190,16 +177,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data?.user) {
       let organizationId: string | undefined;
       
-      // Force refresh organization ID
       try {
         const orgData = await api.organizations.getMyOrg();
         organizationId = orgData.organization?.id;
         if (organizationId) {
           storage.set('org_id', organizationId);
         }
-      } catch {
-        // Ignore
-      }
+      } catch {}
+
 
       setUser({
         id: data.user.id,

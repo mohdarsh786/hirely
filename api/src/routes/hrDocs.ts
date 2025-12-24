@@ -39,14 +39,13 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 
 				const title = String(formData.title ?? file.name ?? 'HR Document').trim();
 
-				// Insert document first for instant response
 				const [doc] = await db
 					.insert(hrDocuments)
 					.values({ 
 						title, 
 						content: text, 
 						uploadedBy: user.id,
-						embeddingId: null // Generate async
+						embeddingId: null
 					})
 					.returning();
 
@@ -54,7 +53,6 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 					return internalError(c, 'Insert failed', 'Failed to create document');
 				}
 
-				// Generate embedding asynchronously (don't block response)
 				generateEmbedding(text)
 					.then(async (embedding) => {
 						await db
@@ -73,14 +71,13 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 			const body = await c.req.json();
 			const data = jsonSchema.parse(body);
 
-			// Insert document first for instant response
 			const [doc] = await db
 				.insert(hrDocuments)
 				.values({ 
 					title: data.title, 
 					content: data.content, 
 					uploadedBy: user.id,
-					embeddingId: null // Generate async
+					embeddingId: null
 				})
 				.returning();
 
@@ -88,7 +85,6 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 				return internalError(c, 'Insert failed', 'Failed to create document');
 			}
 
-			// Generate embedding asynchronously (don't block response)
 			generateEmbedding(data.content)
 				.then(async (embedding) => {
 					await db

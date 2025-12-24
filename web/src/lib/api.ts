@@ -82,6 +82,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/resumes/${id}`, {
+        method: 'DELETE',
+      }),
   },
 
   interviews: {

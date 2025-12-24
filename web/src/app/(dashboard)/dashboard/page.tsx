@@ -26,7 +26,6 @@ import {
   Search,
 } from 'lucide-react';
 
-// Lazy load doodles to improve initial load time
 const WelcomeDoodle = dynamic(
   () => import('@/components/doodles/WelcomeDoodle').then(mod => ({ default: mod.WelcomeDoodle })),
   { ssr: false, loading: () => <div className="h-32 w-32" /> }

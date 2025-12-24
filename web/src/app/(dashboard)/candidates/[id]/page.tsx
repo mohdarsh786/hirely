@@ -25,6 +25,7 @@ import { RouteGuard } from '@/components/RouteGuard';
 import { EmptyStateDoodle } from '@/components/doodles/EmptyStateDoodle';
 import { CandidateProfileDoodle } from '@/components/doodles/CandidateProfileDoodle';
 import { api, type Candidate, type Resume, type Interview } from '@/lib/api';
+import { Trash2, Download, RotateCw } from 'lucide-react';
 
 function CandidateDetailPageContent() {
   const params = useParams();
@@ -33,6 +34,7 @@ function CandidateDetailPageContent() {
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const id = params.id as string;
@@ -55,6 +57,21 @@ function CandidateDetailPageContent() {
       router.push('/candidates');
     } catch (error) {
       console.error('Failed to delete candidate:', error);
+    }
+  };
+
+  const handleDeleteResume = async (resumeId: string) => {
+    if (!confirm('Delete this resume? This action cannot be undone.')) return;
+
+    setDeletingId(resumeId);
+    try {
+      await api.resumes.delete(resumeId);
+      setResumes(resumes.filter(r => r.id !== resumeId));
+    } catch (error) {
+      console.error('Failed to delete resume:', error);
+      alert('Failed to delete resume');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -174,7 +191,7 @@ function CandidateDetailPageContent() {
                     <TableRow>
                       <TableHead>Uploaded</TableHead>
                       <TableHead>Score</TableHead>
-                      <TableHead className="w-24"></TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -191,21 +208,47 @@ function CandidateDetailPageContent() {
                               {resume.aiScore}%
                             </Badge>
                           ) : (
-                            <span className="text-sm text-slate-400">—</span>
+                            <span className="text-sm text-slate-400">Not scored</span>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {resume.fileUrl && (
-                            <a
-                              href={resume.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <Button variant="ghost" size="sm">
-                                View
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {resume.fileUrl && (
+                              <a
+                                href={resume.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Download resume"
+                              >
+                                <Button variant="ghost" size="sm">
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </a>
+                            )}
+                            <Link href={`/resumes/upload?candidateId=${candidate.id}`}>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                title="Upload new resume"
+                              >
+                                <RotateCw className="h-4 w-4" />
                               </Button>
-                            </a>
-                          )}
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteResume(resume.id)}
+                              disabled={deletingId === resume.id}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Delete resume"
+                            >
+                              {deletingId === resume.id ? (
+                                <RotateCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
