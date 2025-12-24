@@ -1,10 +1,18 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAuth } from '@/hooks/useAuth';
+
+function LoadingFallback() {
+  return (
+    <div className="flex h-screen items-center justify-center">
+      <div className="animate-pulse text-sm text-slate-500">Loading...</div>
+    </div>
+  );
+}
 
 export default function DashboardLayout({
   children,
@@ -16,9 +24,9 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.replace('/login');
     } else if (!loading && user && !user.organizationId) {
-      router.push('/organization-setup');
+      router.replace('/organization-setup');
     }
   }, [user, loading, router]);
 
@@ -40,7 +48,9 @@ export default function DashboardLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-auto">
-          {children}
+          <Suspense fallback={<LoadingFallback />}>
+            {children}
+          </Suspense>
         </main>
       </div>
     </div>

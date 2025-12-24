@@ -55,7 +55,6 @@ export async function evaluateAnswer(input: {
 		const result = await model.invoke([system, user]);
 		const content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
 		
-		// Remove markdown code blocks if present
 		const cleanContent = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 		
 		const parsed = parseJsonObject(cleanContent);

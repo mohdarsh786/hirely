@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,23 +16,16 @@ import { api, type Candidate } from '@/lib/api';
 import { RouteGuard } from '@/components/RouteGuard';
 import { EmptyStateDoodle } from '@/components/doodles/EmptyStateDoodle';
 import { Send } from 'lucide-react';
+import { useApi } from '@/hooks/useApi';
+import { PageLoader } from '@/components/ui/loading';
 
 function CandidatesPageContent() {
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refetch } = useApi(() => api.candidates.list());
   const [inviting, setInviting] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.candidates
-      .list()
-      .then((data) => {
-        setCandidates(data.candidates);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  const candidates = data?.candidates || [];
 
-  const handleInvite = async (candidate: Candidate) => {
+  const handleInvite = useCallback(async (candidate: Candidate) => {
     if (!candidate.email) return;
 
     setInviting(candidate.id);
@@ -49,14 +42,10 @@ function CandidatesPageContent() {
     } finally {
       setInviting(null);
     }
-  };
+  }, []);
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-500">Loading candidates...</p>
-      </div>
-    );
+    return <PageLoader text="Loading candidates..." />;
   }
 
   return (

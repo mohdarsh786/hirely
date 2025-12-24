@@ -5,7 +5,6 @@ import { eq } from 'drizzle-orm';
 
 const app = new Hono();
 
-// GET /public/interview/:token - Get interview details (no auth required)
 app.get('/interview/:token', async (c) => {
     try {
         const token = c.req.param('token');
@@ -25,7 +24,6 @@ app.get('/interview/:token', async (c) => {
             return c.json({ error: 'Interview link has expired' }, 410);
         }
 
-        // Get candidate
         const [candidate] = await db
             .select()
             .from(candidates)
@@ -35,7 +33,6 @@ app.get('/interview/:token', async (c) => {
             return c.json({ error: 'Candidate not found' }, 404);
         }
 
-        // Get or create interview
         let interview;
         if (invite.interviewId) {
             [interview] = await db
@@ -55,7 +52,6 @@ app.get('/interview/:token', async (c) => {
     }
 });
 
-// POST /public/interview/:token/answer - Submit interview answer (no auth required)
 app.post('/interview/:token/answer', async (c) => {
     try {
         const token = c.req.param('token');
@@ -76,7 +72,6 @@ app.post('/interview/:token/answer', async (c) => {
             return c.json({ error: 'No interview associated with this invite' }, 400);
         }
 
-        // Get interview
         const [interview] = await db
             .select()
             .from(interviews)
@@ -86,7 +81,6 @@ app.post('/interview/:token/answer', async (c) => {
             return c.json({ error: 'Interview not found' }, 404);
         }
 
-        // Update transcript with answer
         const transcript = interview.transcript || [];
         transcript.push({
             type: 'answer',
@@ -106,7 +100,6 @@ app.post('/interview/:token/answer', async (c) => {
     }
 });
 
-// GET /public/interview/:token/result - Get interview result (no auth required)
 app.get('/interview/:token/result', async (c) => {
     try {
         const token = c.req.param('token');

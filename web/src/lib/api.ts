@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { apiCache } from './cache';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -21,19 +22,35 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
+interface RequestOptions extends RequestInit {
+  cache?: boolean;
+  cacheTTL?: number;
+}
+
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestOptions = {}
 ): Promise<T> {
+  const { cache: shouldCache = false, cacheTTL = 30000, ...fetchOptions } = options;
+  const cacheKey = `${endpoint}:${JSON.stringify(fetchOptions.body || {})}`;
+
+  // Check cache for GET requests
+  if (shouldCache && (!fetchOptions.method || fetchOptions.method === 'GET')) {
+    const cached = apiCache.get<T>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
   const url = `${API_URL}${endpoint}`;
   const authHeader = await getAuthHeader();
 
   const res = await fetch(url, {
-    ...options,
+    ...fetchOptions,
     headers: {
       'Content-Type': 'application/json',
       ...authHeader,
-      ...options.headers,
+      ...fetchOptions.headers,
     },
   });
 
@@ -42,15 +59,29 @@ async function request<T>(
     throw new ApiError(error.message || error.error || 'Request failed', res.status, error);
   }
 
-  return res.json();
+  const data = await res.json();
+
+  // Cache successful GET requests
+  if (shouldCache && (!fetchOptions.method || fetchOptions.method === 'GET')) {
+    apiCache.set(cacheKey, data, cacheTTL);
+  }
+
+  // Invalidate related cache on mutations
+  if (fetchOptions.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchOptions.method)) {
+    const basePath = endpoint.split('/')[1];
+    apiCache.invalidate(basePath);
+  }
+
+  return data;
 }
 
 export const api = {
   candidates: {
-    list: () => request<{ candidates: Candidate[] }>('/candidates'),
+    list: () => request<{ candidates: Candidate[] }>('/candidates', { cache: true }),
     get: (id: string) =>
       request<{ candidate: Candidate; resumes: Resume[]; interviews: Interview[] }>(
-        `/candidates/${id}`
+        `/candidates/${id}`,
+        { cache: true, cacheTTL: 60000 }
       ),
     create: (data: CreateCandidateData) =>
       request<{ candidate: Candidate }>('/candidates', {
@@ -64,7 +95,7 @@ export const api = {
   },
 
   resumes: {
-    list: () => request<{ resumes: Resume[] }>('/resumes'),
+    list: () => request<{ resumes: Resume[] }>('/resumes', { cache: true }),
     upload: async (candidateId: string, file: File) => {
       const authHeader = await getAuthHeader();
       const formData = new FormData();
@@ -89,7 +120,7 @@ export const api = {
   },
 
   interviews: {
-    list: () => request<{ interviews: Interview[] }>('/interview'),
+    list: () => request<{ interviews: Interview[] }>('/interview', { cache: true }),
     start: (candidateId: string, role?: string) =>
       request<{ interviewId: string; question: string }>(
         `/interview/start/${candidateId}`,
@@ -99,7 +130,14 @@ export const api = {
         }
       ),
     answer: (interviewId: string, answer: string) =>
-      request<{ nextQuestion: string | null; feedback: string; score: number }>(
+      request<{ 
+        nextQuestion: string | null; 
+        question: string | null;
+        feedback: string; 
+        score: number;
+        evaluation?: { score: number; feedback: string };
+        interview?: Interview;
+      }>(
         `/interview/answer/${interviewId}`,
         {
           method: 'POST',
@@ -111,7 +149,7 @@ export const api = {
         method: 'POST',
       }),
     get: (interviewId: string) =>
-      request<{ interview: Interview }>(`/interview/${interviewId}`),
+      request<{ interview: Interview }>(`/interview/${interviewId}`, { cache: true, cacheTTL: 60000 }),
     delete: (interviewId: string) =>
       request<{ success: boolean }>(`/interview/${interviewId}`, {
         method: 'DELETE',
@@ -187,7 +225,7 @@ export const api = {
   },
 
   invites: {
-    createCandidate: (data: { candidateId: string; email: string; expiresInDays?: number }) =>
+    createCandidate: (data: { candidateId: string; interviewId?: string; email: string; expiresInDays?: number }) =>
       request<{ invite: CandidateInvite; inviteLink: string }>('/invites/candidate', {
         method: 'POST',
         body: JSON.stringify(data),

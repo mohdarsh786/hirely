@@ -61,13 +61,11 @@ async function createDemoUsers() {
           console.log(`   ⚠️  User already exists, updating...`);
           userId = existingUser.id;
 
-          // Update user metadata
           await supabaseAdmin.auth.admin.updateUserById(userId, {
             user_metadata: { role: user.role },
             app_metadata: { role: user.role },
           });
         } else {
-          // Create new user
           const { data: newUser, error } = await supabaseAdmin.auth.admin.createUser({
             email: user.email,
             password: user.password,
@@ -85,7 +83,6 @@ async function createDemoUsers() {
           console.log(`   ✅ User created (ID: ${userId})`);
         }
 
-        // Add user to organization
         const existingMembers = await db
           .select()
           .from(organizationMembers)

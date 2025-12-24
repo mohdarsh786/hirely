@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, type Interview, type Candidate } from '@/lib/api';
@@ -10,6 +10,7 @@ import { Check, X, Loader2 } from 'lucide-react';
 
 export default function PublicInterviewPage() {
     const params = useParams();
+    const router = useRouter();
     const token = params.token as string;
 
     const [loading, setLoading] = useState(true);
@@ -26,18 +27,12 @@ export default function PublicInterviewPage() {
             setCandidate(data.candidate);
             setInterview(data.interview);
             
-            // Stop polling if interview exists
-            if (data.interview && intervalRef.current) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = null;
+            // If interview exists, redirect to live interview page
+            if (data.interview?.id) {
+                router.push(`/hr-interviews/live/${data.interview.id}`);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Invalid or expired interview link');
-            // Stop polling on error
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = null;
-            }
         } finally {
             setLoading(false);
         }
@@ -45,11 +40,6 @@ export default function PublicInterviewPage() {
 
     useEffect(() => {
         loadInterview();
-        
-        // Auto-refresh every 5 seconds to check for interview start
-        intervalRef.current = setInterval(() => {
-            loadInterview();
-        }, 5000);
         
         return () => {
             if (intervalRef.current) {
@@ -127,20 +117,16 @@ export default function PublicInterviewPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="text-center space-y-6">
-                        <div className="rounded-lg bg-blue-50 border border-blue-200 p-6">
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 p-6">
                             <div className="flex items-center justify-center gap-3 mb-3">
-                                <div className="h-3 w-3 bg-blue-500 rounded-full animate-pulse"></div>
-                                <p className="text-lg font-semibold text-blue-900">
-                                    Interview Invitation Received
+                                <div className="h-3 w-3 bg-amber-500 rounded-full"></div>
+                                <p className="text-lg font-semibold text-amber-900">
+                                    Interview Not Yet Started
                                 </p>
                             </div>
                             <p className="text-slate-700 mb-4">
-                                Your invite has been successfully validated! The recruiter will start your interview session shortly.
+                                Your invitation has been received, but the interview hasn't been set up yet. Please contact the recruiter or check back later.
                             </p>
-                            <div className="flex items-center justify-center gap-2 text-sm text-blue-700">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Waiting for recruiter to initiate interview...</span>
-                            </div>
                         </div>
 
                         <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
@@ -152,19 +138,14 @@ export default function PublicInterviewPage() {
                             </p>
                         </div>
 
-                        <div className="text-left bg-amber-50 border border-amber-200 rounded-lg p-4">
-                            <p className="text-sm font-medium text-amber-900 mb-2">📋 What happens next?</p>
-                            <ul className="text-xs text-amber-800 space-y-1.5 list-disc list-inside">
-                                <li>The recruiter has been notified of your arrival</li>
-                                <li>They will start the interview session when ready</li>
-                                <li>You'll be able to answer questions in real-time</li>
-                                <li>Keep this page open to see updates</li>
+                        <div className="text-left bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <p className="text-sm font-medium text-blue-900 mb-2">📋 Next Steps:</p>
+                            <ul className="text-xs text-blue-800 space-y-1.5 list-disc list-inside">
+                                <li>The recruiter needs to generate interview questions for you</li>
+                                <li>You'll receive a new link once the interview is ready</li>
+                                <li>Or contact your recruiter for immediate assistance</li>
                             </ul>
                         </div>
-
-                        <p className="text-xs text-slate-500 mt-4">
-                            💡 Tip: Please keep this window open. The page will automatically refresh when the interview begins.
-                        </p>
                     </CardContent>
                 </Card>
             </div>

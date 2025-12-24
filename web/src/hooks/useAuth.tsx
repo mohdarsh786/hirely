@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase, getUser } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -160,19 +160,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    storage.remove('org_id');
+  const handleSignOut = useCallback(async () => {
+    // Immediately clear state for instant UI response
     setUser(null);
+    storage.remove('org_id');
     router.push('/login');
-  };
+    
+    // Sign out in background
+    supabase.auth.signOut().catch(console.error);
+  }, [router]);
 
-  const hasRole = (roles: Role[]) => {
+  const hasRole = useCallback((roles: Role[]) => {
     if (!user?.role) return false;
     return roles.includes(user.role);
-  };
+  }, [user?.role]);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     const { data } = await getUser();
     if (data?.user) {
       let organizationId: string | undefined;
@@ -193,10 +196,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         organizationId,
       });
     }
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, loading, signOut: handleSignOut, hasRole, refreshUser }),
+    [user, loading, handleSignOut, hasRole, refreshUser]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasRole, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

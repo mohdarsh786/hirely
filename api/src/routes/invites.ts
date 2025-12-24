@@ -7,7 +7,6 @@ import { sendEmail } from '../services/mail';
 
 const app = new Hono();
 
-// POST /invites/candidate - Create candidate interview invite
 app.post('/candidate', async (c) => {
     try {
         const body = await c.req.json();
@@ -36,7 +35,11 @@ app.post('/candidate', async (c) => {
         }).returning();
 
         const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const inviteLink = `${baseUrl}/interview/token/${token}`;
+        
+        // If interviewId exists, link directly to live interview
+        const inviteLink = interviewId 
+            ? `${baseUrl}/hr-interviews/live/${interviewId}`
+            : `${baseUrl}/interview/token/${token}`;
 
         await sendEmail({
             to: email,
@@ -67,7 +70,6 @@ app.post('/candidate', async (c) => {
     }
 });
 
-// GET /invites/validate/:token - Validate invite token
 app.get('/validate/:token', async (c) => {
     try {
         const token = c.req.param('token');
@@ -85,13 +87,11 @@ app.get('/validate/:token', async (c) => {
             return c.json({ error: 'Invite has expired' }, 410);
         }
 
-        // Get candidate info
         const [candidate] = await db
             .select()
             .from(candidates)
             .where(eq(candidates.id, invite.candidateId));
 
-        // Get interview if exists
         let interview = null;
         if (invite.interviewId) {
             [interview] = await db
@@ -112,7 +112,6 @@ app.get('/validate/:token', async (c) => {
     }
 });
 
-// POST /invites/accept/:token - Mark invite as used
 app.post('/accept/:token', async (c) => {
     try {
         const token = c.req.param('token');
@@ -134,7 +133,6 @@ app.post('/accept/:token', async (c) => {
     }
 });
 
-// GET /invites/candidate/:candidateId - Get invites for a candidate
 app.get('/candidate/:candidateId', async (c) => {
     try {
         const candidateId = c.req.param('candidateId');
