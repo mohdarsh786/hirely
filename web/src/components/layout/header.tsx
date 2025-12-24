@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -11,7 +10,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
-import { signOut } from '@/lib/supabase';
 
 const roleLabels: Record<string, string> = {
   HR_ADMIN: 'Admin',
@@ -20,12 +18,10 @@ const roleLabels: Record<string, string> = {
 };
 
 export function Header() {
-  const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
 
   const handleLogout = async () => {
     await signOut();
-    router.push('/login');
   };
 
   const displayName = user?.email?.split('@')[0] || 'User';

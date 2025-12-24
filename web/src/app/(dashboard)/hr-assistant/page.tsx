@@ -112,14 +112,14 @@ export default function HRAssistantPage() {
                                   <p className="text-xs font-medium text-slate-500">Sources:</p>
                                   <div className="flex flex-wrap gap-2">
                                     {msg.sources.map((source) => (
-                                      <a
+                                      <Link
                                         key={source.id}
-                                        href={`/hr-docs/${source.id}`}
+                                        href={`/hr-assistant/docs/${source.id}`}
                                         data-testid="source-link"
-                                        className="inline-flex items-center rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
+                                        className="inline-flex items-center rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 transition-colors"
                                       >
                                         {source.title}
-                                      </a>
+                                      </Link>
                                     ))}
                                   </div>
                                 </div>

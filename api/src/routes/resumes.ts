@@ -174,4 +174,36 @@ export const resumesRoutes = new Hono<{ Variables: AppVariables }>()
 		} catch (error) {
 			return internalError(c, error, 'Failed to fetch resumes');
 		}
+	})
+	.delete('/:id', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
+		const id = c.req.param('id');
+
+		if (!isValidUuid(id)) {
+			return badRequest(c, 'Invalid resume ID');
+		}
+
+		try {
+			const [resume] = await db.select().from(resumes).where(eq(resumes.id, id)).limit(1);
+			
+			if (!resume) {
+				return notFound(c, 'Resume');
+			}
+
+			if (resume.fileUrl) {
+				const env = getEnv();
+				const urlParts = resume.fileUrl.split('/');
+				const pathIndex = urlParts.findIndex(part => part === env.SUPABASE_RESUME_BUCKET);
+				
+				if (pathIndex !== -1) {
+					const filePath = urlParts.slice(pathIndex + 1).join('/');
+					await supabaseAdmin.storage.from(env.SUPABASE_RESUME_BUCKET).remove([filePath]);
+				}
+			}
+
+			await db.delete(resumes).where(eq(resumes.id, id));
+
+			return c.json({ success: true }, 200);
+		} catch (error) {
+			return internalError(c, error, 'Failed to delete resume');
+		}
 	});

@@ -14,9 +14,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 import { api, type Resume } from '@/lib/api';
 import { RouteGuard } from '@/components/RouteGuard';
-import { ResumeProcessingDoodle } from '@/components/doodles/ResumeProcessingDoodle';
+import dynamic from 'next/dynamic';
+
+const ResumeProcessingDoodle = dynamic(
+  () => import('@/components/doodles/ResumeProcessingDoodle').then(mod => mod.ResumeProcessingDoodle),
+  { ssr: false, loading: () => <div className="h-56 w-56" /> }
+);
 
 function ResumesPageContent() {
   const [resumes, setResumes] = useState<Resume[]>([]);
@@ -54,8 +60,8 @@ function ResumesPageContent() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-500">Loading resumes...</p>
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
       </div>
     );
   }

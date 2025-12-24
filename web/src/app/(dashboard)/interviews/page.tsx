@@ -19,9 +19,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 import { api, type Interview } from '@/lib/api';
 import { RouteGuard } from '@/components/RouteGuard';
-import { InterviewScheduleDoodle } from '@/components/doodles/InterviewScheduleDoodle';
+import dynamic from 'next/dynamic';
+
+const InterviewScheduleDoodle = dynamic(
+  () => import('@/components/doodles/InterviewScheduleDoodle').then(mod => mod.InterviewScheduleDoodle),
+  { ssr: false, loading: () => <div className="h-56 w-56" /> }
+);
 
 function InterviewsPageContent() {
   const [interviews, setInterviews] = useState<Interview[]>([]);
@@ -60,8 +66,8 @@ function InterviewsPageContent() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-slate-500">Loading interviews...</p>
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
       </div>
     );
   }

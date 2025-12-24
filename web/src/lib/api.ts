@@ -82,6 +82,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/resumes/${id}`, {
+        method: 'DELETE',
+      }),
   },
 
   interviews: {
@@ -127,6 +131,7 @@ export const api = {
 
   hrDocs: {
     list: () => request<{ documents: HRDocument[] }>('/hr-docs'),
+    get: (id: string) => request<{ document: HRDocument }>(`/hr-docs/${id}`),
     upload: async (file: File, title: string) => {
       const authHeader = await getAuthHeader();
       const formData = new FormData();

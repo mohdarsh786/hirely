@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun --env-file .env --hot src/index.ts",
     "drizzle:generate": "bun --env-file .env node_modules/.bin/drizzle-kit generate",
-    "drizzle:migrate": "bun --env-file .env src/db/migrate.ts"
+    "drizzle:migrate": "bun --env-file .env src/db/migrate.ts",
+    "create-demo-users": "bun --env-file .env src/scripts/createDemoUsers.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
