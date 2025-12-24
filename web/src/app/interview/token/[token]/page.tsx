@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,22 +18,45 @@ export default function PublicInterviewPage() {
     const [interview, setInterview] = useState<Interview | null>(null);
     const [currentAnswer, setCurrentAnswer] = useState('');
     const [submitting, setSubmitting] = useState(false);
-
-    useEffect(() => {
-        loadInterview();
-    }, [token]);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const loadInterview = async () => {
         try {
             const data = await api.public.getInterview(token);
             setCandidate(data.candidate);
             setInterview(data.interview);
+            
+            // Stop polling if interview exists
+            if (data.interview && intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Invalid or expired interview link');
+            // Stop polling on error
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
         } finally {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        loadInterview();
+        
+        // Auto-refresh every 5 seconds to check for interview start
+        intervalRef.current = setInterval(() => {
+            loadInterview();
+        }, 5000);
+        
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, [token]);
 
     const handleSubmitAnswer = async () => {
         if (!currentAnswer.trim()) return;
@@ -94,21 +117,53 @@ export default function PublicInterviewPage() {
     if (!interview) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 p-4">
-                <Card className="w-full max-w-2xl">
+                <Card className="w-full max-w-2xl shadow-lg">
                     <CardHeader>
                         <div className="flex items-center justify-center mb-4">
-                            <InterviewScheduleDoodle className="h-48 w-full max-w-md" />
+                            <InterviewScheduleDoodle className="h-40 w-full max-w-md" />
                         </div>
-                        <CardTitle className="text-center text-2xl">
+                        <CardTitle className="text-center text-3xl font-bold text-slate-900">
                             Welcome, {candidate?.name}!
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="text-center space-y-4">
-                        <p className="text-slate-600">
-                            No interview has been assigned yet. Please wait for the recruiter to set up your interview.
-                        </p>
-                        <p className="text-sm text-slate-500">
-                            Applying for: <span className="font-medium">{candidate?.appliedRole || 'General Position'}</span>
+                    <CardContent className="text-center space-y-6">
+                        <div className="rounded-lg bg-blue-50 border border-blue-200 p-6">
+                            <div className="flex items-center justify-center gap-3 mb-3">
+                                <div className="h-3 w-3 bg-blue-500 rounded-full animate-pulse"></div>
+                                <p className="text-lg font-semibold text-blue-900">
+                                    Interview Invitation Received
+                                </p>
+                            </div>
+                            <p className="text-slate-700 mb-4">
+                                Your invite has been successfully validated! The recruiter will start your interview session shortly.
+                            </p>
+                            <div className="flex items-center justify-center gap-2 text-sm text-blue-700">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span>Waiting for recruiter to initiate interview...</span>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
+                            <p className="text-sm text-slate-600 mb-2">
+                                <span className="font-semibold text-slate-900">Position:</span> {candidate?.appliedRole || 'General Position'}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                                <span className="font-semibold text-slate-900">Email:</span> {candidate?.email}
+                            </p>
+                        </div>
+
+                        <div className="text-left bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <p className="text-sm font-medium text-amber-900 mb-2">📋 What happens next?</p>
+                            <ul className="text-xs text-amber-800 space-y-1.5 list-disc list-inside">
+                                <li>The recruiter has been notified of your arrival</li>
+                                <li>They will start the interview session when ready</li>
+                                <li>You'll be able to answer questions in real-time</li>
+                                <li>Keep this page open to see updates</li>
+                            </ul>
+                        </div>
+
+                        <p className="text-xs text-slate-500 mt-4">
+                            💡 Tip: Please keep this window open. The page will automatically refresh when the interview begins.
                         </p>
                     </CardContent>
                 </Card>

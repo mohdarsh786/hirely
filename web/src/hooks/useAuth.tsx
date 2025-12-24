@@ -45,32 +45,83 @@ function extractRole(user: any): Role | null {
 
 import { api } from '@/lib/api';
 
+// Browser-only storage helper
+const storage = {
+  get: (key: string): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set: (key: string, value: string): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(key, value);
+    } catch {
+      // Ignore
+    }
+  },
+  remove: (key: string): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // Ignore
+    }
+  },
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
+    let mounted = true;
+    
     // Get initial session
     const initAuth = async () => {
-      const { data } = await getUser();
-      if (data?.user) {
-        let organizationId: string | undefined;
-        try {
-          const orgData = await api.organizations.getMyOrg();
-          organizationId = orgData.organization?.id;
-        } catch {
-          // Ignore
-        }
+      try {
+        const { data } = await getUser();
+        if (!mounted) return;
+        
+        if (data?.user) {
+          let organizationId: string | undefined;
+          
+          // Cache organization ID to avoid repeated API calls
+          const cachedOrgId = storage.get('org_id');
+          if (cachedOrgId) {
+            organizationId = cachedOrgId;
+          } else {
+            try {
+              const orgData = await api.organizations.getMyOrg();
+              organizationId = orgData.organization?.id;
+              if (organizationId) {
+                storage.set('org_id', organizationId);
+              }
+            } catch {
+              // Ignore
+            }
+          }
 
-        setUser({
-          id: data.user.id,
-          email: data.user.email ?? null,
-          role: extractRole(data.user),
-          organizationId,
-        });
+          if (mounted) {
+            setUser({
+              id: data.user.id,
+              email: data.user.email ?? null,
+              role: extractRole(data.user),
+              organizationId,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Auth init error:', error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     };
 
     initAuth();
@@ -79,23 +130,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
       if (session?.user) {
         const { data } = await getUser();
-        if (data?.user) {
+        if (data?.user && mounted) {
           let organizationId: string | undefined;
-          try {
-            const orgData = await api.organizations.getMyOrg();
-            organizationId = orgData.organization?.id;
-          } catch (e) {
-            // Ignore
+          
+          // Use cached org ID
+          const cachedOrgId = storage.get('org_id');
+          if (cachedOrgId) {
+            organizationId = cachedOrgId;
+          } else {
+            try {
+              const orgData = await api.organizations.getMyOrg();
+              organizationId = orgData.organization?.id;
+              if (organizationId) {
+                storage.set('org_id', organizationId);
+              }
+            } catch (e) {
+              // Ignore
+            }
           }
 
-          setUser({
-            id: data.user.id,
-            email: data.user.email ?? null,
-            role: extractRole(data.user),
-            organizationId,
-          });
+          if (mounted) {
+            setUser({
+              id: data.user.id,
+              email: data.user.email ?? null,
+              role: extractRole(data.user),
+              organizationId,
+            });
+          }
         }
       } else {
         setUser(null);
@@ -103,12 +168,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    storage.remove('org_id'); // Clear cache
     setUser(null);
     router.push('/login');
   };
@@ -122,9 +189,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data } = await getUser();
     if (data?.user) {
       let organizationId: string | undefined;
+      
+      // Force refresh organization ID
       try {
         const orgData = await api.organizations.getMyOrg();
         organizationId = orgData.organization?.id;
+        if (organizationId) {
+          storage.set('org_id', organizationId);
+        }
       } catch {
         // Ignore
       }

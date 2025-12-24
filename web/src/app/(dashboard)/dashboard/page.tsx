@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -13,8 +14,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { api, type Candidate } from '@/lib/api';
-import { WelcomeDoodle } from '@/components/doodles/WelcomeDoodle';
-import { EmptyStateDoodle } from '@/components/doodles/EmptyStateDoodle';
 import {
   Users,
   Video,
@@ -26,6 +25,17 @@ import {
   Briefcase,
   Search,
 } from 'lucide-react';
+
+// Lazy load doodles to improve initial load time
+const WelcomeDoodle = dynamic(
+  () => import('@/components/doodles/WelcomeDoodle').then(mod => ({ default: mod.WelcomeDoodle })),
+  { ssr: false, loading: () => <div className="h-32 w-32" /> }
+);
+
+const EmptyStateDoodle = dynamic(
+  () => import('@/components/doodles/EmptyStateDoodle').then(mod => ({ default: mod.EmptyStateDoodle })),
+  { ssr: false, loading: () => <div className="h-32 w-32" /> }
+);
 
 interface DashboardStats {
   totalCandidates: number;

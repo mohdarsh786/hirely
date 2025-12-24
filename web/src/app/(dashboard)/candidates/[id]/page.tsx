@@ -26,7 +26,7 @@ import { EmptyStateDoodle } from '@/components/doodles/EmptyStateDoodle';
 import { CandidateProfileDoodle } from '@/components/doodles/CandidateProfileDoodle';
 import { api, type Candidate, type Resume, type Interview } from '@/lib/api';
 
-export default function CandidateDetailPage() {
+function CandidateDetailPageContent() {
   const params = useParams();
   const router = useRouter();
   const [candidate, setCandidate] = useState<Candidate | null>(null);
@@ -303,5 +303,13 @@ export default function CandidateDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CandidateDetailPage() {
+  return (
+    <RouteGuard allowedRoles={['HR_ADMIN', 'RECRUITER']}>
+      <CandidateDetailPageContent />
+    </RouteGuard>
   );
 }

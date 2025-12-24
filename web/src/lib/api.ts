@@ -127,6 +127,7 @@ export const api = {
 
   hrDocs: {
     list: () => request<{ documents: HRDocument[] }>('/hr-docs'),
+    get: (id: string) => request<{ document: HRDocument }>(`/hr-docs/${id}`),
     upload: async (file: File, title: string) => {
       const authHeader = await getAuthHeader();
       const formData = new FormData();
