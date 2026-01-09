@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-
-// 1. FAST ICON IMPORT (Direct Path)
-import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,8 +20,6 @@ import { Badge } from '@/components/ui/badge';
 import { api, type Resume } from '@/lib/api';
 import { RouteGuard } from '@/components/RouteGuard';
 
-// 2. OPTIMIZED DYNAMIC IMPORT
-// Moved the doodle to a sub-component to keep the main page AST small
 const EmptyState = dynamic(() => import('./_components/ResumeEmptyState'), {
   ssr: false,
   loading: () => <div className="h-64 animate-pulse bg-slate-50 rounded-lg" />

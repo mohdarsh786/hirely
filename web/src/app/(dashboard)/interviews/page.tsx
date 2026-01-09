@@ -23,7 +23,7 @@ export default function InterviewsPage() {
       return;
     }
 
-    if (!['HR_ADMIN', 'RECRUITER'].includes(user.role)) {
+    if (!['HR_ADMIN', 'RECRUITER'].includes(user.role ?? '')) {
       router.push('/403');
       return;
     }

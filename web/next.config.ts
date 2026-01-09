@@ -6,9 +6,6 @@ const nextConfig: NextConfig = {
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
   },
 
-  watchOptions: {
-    ignored: ['**/api/**'],
-  },
   experimental: {
     optimizePackageImports: [
       'lucide-react',
@@ -16,12 +13,6 @@ const nextConfig: NextConfig = {
       '@/components/ui',
       '@/components/doodles', 
     ],
-
-    turbo: {
-      resolveAlias: {
-        canvas: './empty-module.ts',
-      },
-    },
   },
 
   images: {

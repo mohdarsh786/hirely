@@ -16,8 +16,15 @@ const envSchema = z.object({
 	GROQ_API_KEY: z.string().min(1),
 	GROQ_CHAT_MODEL: z.string().min(1),
 
+	OPENROUTER_API_KEY: z.string().min(1).optional(),
+
 	BREVO_API_KEY: z.string().min(1).optional(),
 	BREVO_SMTP_API_KEY: z.string().min(1).optional(),
+
+	GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),
+	GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1),
+	GOOGLE_REDIRECT_URI: z.string().url(),
+	GOOGLE_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

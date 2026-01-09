@@ -1,8 +1,12 @@
 import { createApp } from './app';
 import { getEnv } from './env';
 
+import { startScheduler } from './services/scheduler';
+
 const env = getEnv();
 const app = createApp();
+
+startScheduler();
 
 Bun.serve({
 	port: env.PORT,

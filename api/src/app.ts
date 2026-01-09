@@ -11,6 +11,8 @@ import { jobsRoutes } from './routes/jobs';
 import organizationsRoutes from './routes/organizations';
 import invitesRoutes from './routes/invites';
 import publicRoutes from './routes/public';
+import { batchResumesRoutes } from './routes/batchResumes';
+import { integrationsRoutes } from './routes/integrations';
 import { getEnv } from './env';
 
 export function createApp() {
@@ -34,6 +36,8 @@ export function createApp() {
 	app.route('/interview', interviewsRoutes);
 	app.route('/hr-docs', hrDocsRoutes);
 	app.route('/hr-chat', hrChatRoutes);
+	app.route('/batch', batchResumesRoutes);
+	app.route('/integrations', integrationsRoutes);
 	app.route('/stats', statsRoutes);
 
 	// Organization routes

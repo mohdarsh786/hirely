@@ -15,7 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { InterviewActiveDoodle } from '@/components/doodles/InterviewActiveDoodle';
 
-export default function StartInterviewPage() {
+import { Suspense } from 'react';
+
+function StartInterviewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const candidateId = searchParams.get('candidateId');
@@ -203,5 +205,13 @@ export default function StartInterviewPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function StartInterviewPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <StartInterviewContent />
+    </Suspense>
   );
 }

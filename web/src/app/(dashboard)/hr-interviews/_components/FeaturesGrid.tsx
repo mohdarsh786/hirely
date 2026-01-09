@@ -1,8 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
-import CheckCircle from 'lucide-react/dist/esm/icons/check-circle';
-import FileText from 'lucide-react/dist/esm/icons/file-text';
-import Users2 from 'lucide-react/dist/esm/icons/users-2';
+import { Sparkles, CheckCircle, FileText, Users2 } from 'lucide-react';
 
 export default function FeaturesGrid() {
   const features = [

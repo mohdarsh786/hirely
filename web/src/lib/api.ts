@@ -5,9 +5,9 @@ import type {
   Resume, 
   HRDocument, 
   ChatLog, 
-  DashboardStats 
-} from '@/types';
-import type {
+  DashboardStats,
+  BatchCandidate,
+  BatchUpload,
   Job,
   CreateJobData,
   CreateCandidateData,
@@ -16,6 +16,23 @@ import type {
   CreateInterviewData,
   TranscriptEntry
 } from '@/types';
+
+export type { 
+  Candidate, 
+  Resume, 
+  HRDocument, 
+  ChatLog, 
+  DashboardStats,
+  BatchCandidate,
+  BatchUpload,
+  Job,
+  CreateJobData,
+  CreateCandidateData,
+  ProcessResumeData,
+  Interview,
+  CreateInterviewData,
+  TranscriptEntry
+};
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -122,6 +139,11 @@ export const api = {
         `/candidates/${id}`,
         { useCache: true, cacheTTL: 60000 }
       ),
+    search: (query: string) => 
+        request<{ results: any[] }>('/candidates/search', {
+            method: 'POST',
+            body: JSON.stringify({ query })
+        }),
     create: (data: CreateCandidateData) =>
       request<{ candidate: Candidate; job: Job }>('/candidates', {
         method: 'POST',
@@ -131,6 +153,18 @@ export const api = {
       request<{ success: boolean }>(`/candidates/${id}`, {
         method: 'DELETE',
       }),
+    getInsights: (id: string) =>
+        request<{ 
+            candidateId: string;
+            candidateName: string;
+            jobTitle: string;
+            insights: {
+                why_matched: string; // The "reason" from scoring
+                suggested_interview_questions: string[];
+                strengths: string[]; // matched skills
+                weaknesses: string[]; // missing skills
+            }
+        }>(`/candidates/${id}/insights`, { useCache: true }),
   },
 
   resumes: {
@@ -150,6 +184,76 @@ export const api = {
     delete: (id: string) =>
       request<{ success: boolean }>(`/resumes/${id}`, {
         method: 'DELETE',
+      }),
+  },
+
+  batch: {
+    upload: async (jobId: string, files: File[]) => {
+      const authHeader = await getAuthHeader();
+      const formData = new FormData();
+      formData.append('jobId', jobId);
+      for (const file of files) {
+        formData.append('files', file);
+      }
+      const res = await fetch(`${API_URL}/batch/upload`, {
+        method: 'POST',
+        headers: authHeader,
+        body: formData,
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: 'Upload failed' }));
+        throw new ApiError(error.message || error.error || 'Upload failed', res.status, error);
+      }
+      return res.json() as Promise<{ batchId: string; totalFiles: number }>;
+    },
+    createStatusStream: async (batchId: string) => {
+      const authHeader = await getAuthHeader();
+      const url = `${API_URL}/batch/${batchId}/status`;
+      const eventSource = new EventSource(url, { withCredentials: true });
+      return eventSource;
+    },
+    getStatusUrl: (batchId: string) => `${API_URL}/batch/${batchId}/status`,
+    getResults: (batchId: string) =>
+      request<{
+        batchId: string;
+        status: 'processing' | 'completed' | 'failed';
+        totalFiles: number;
+        processedCount: number;
+        candidates: BatchCandidate[];
+      }>(`/batch/${batchId}/results`),
+    quickCreateJob: (data: { title: string; requiredSkills: string[]; description?: string }) =>
+      request<{ job: Job }>('/batch/quick-job', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getHistory: () =>
+      request<{ batches: BatchUpload[] }>('/batch/history'),
+  },
+
+  integrations: {
+    getGmailAuthUrl: (jobId: string) =>
+      request<{ url: string }>('/integrations/gmail/auth-url', {
+        method: 'POST',
+        body: JSON.stringify({ jobId }),
+      }),
+    getDriveAuthUrl: (jobId: string) =>
+      request<{ url: string }>('/integrations/drive/auth-url', {
+        method: 'POST',
+        body: JSON.stringify({ jobId }),
+      }),
+    // Unified callback
+    callback: (code: string, state?: string) =>
+      request<{ success: boolean; email: string; jobId?: string }>('/integrations/callback', {
+        method: 'POST',
+        body: JSON.stringify({ code, state }),
+      }),
+    syncGmail: (jobId: string) =>
+      request<{ batchId: string; count: number }>('/integrations/gmail/' + jobId + '/sync', {
+        method: 'POST',
+      }),
+    syncDrive: (jobId: string) =>
+      request<{ batchId: string; count: number }>('/integrations/drive/' + jobId + '/sync', {
+        method: 'POST',
       }),
   },
 
@@ -176,6 +280,7 @@ export const api = {
         score: number;
         evaluation?: { score: number; feedback: string };
         interview?: Interview;
+        isComplete?: boolean;
       }>(
         `/interview/answer/${interviewId}`,
         {

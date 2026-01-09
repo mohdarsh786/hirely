@@ -1,8 +1,5 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import CheckCircle from 'lucide-react/dist/esm/icons/check-circle';
-import Users2 from 'lucide-react/dist/esm/icons/users-2';
-import Briefcase from 'lucide-react/dist/esm/icons/briefcase';
-import FileText from 'lucide-react/dist/esm/icons/file-text';
+import { CheckCircle, Users2, Briefcase, FileText } from 'lucide-react';
 
 interface Props {
   interviewCreated: boolean;

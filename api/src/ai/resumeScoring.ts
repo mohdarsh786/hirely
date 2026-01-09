@@ -1,61 +1,64 @@
 import { z } from 'zod';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { getGroqChat } from './groq';
-import { parseJsonObject } from '../utils/json';
+import { invokeWithFallback, getGroqChat } from './llm';
 
-const schema = z.object({
-	score: z.number().min(0).max(100),
-	matched_skills: z.array(z.string()).default([]),
-	missing_skills: z.array(z.string()).default([]),
-	reason: z.string().default(''),
+export const ResumeScoreSchema = z.object({
+	score: z.number().min(0).max(100).describe('Match score from 0-100'),
+	matched_skills: z.array(z.string()).describe('Skills found in resume'),
+	missing_skills: z.array(z.string()).describe('Required skills not found'),
+	reason: z.string().describe('Brief explanation of the score'),
 });
 
-export type ResumeScore = z.infer<typeof schema>;
+export type ResumeScore = z.infer<typeof ResumeScoreSchema>;
+
+const SYSTEM_PROMPT = 
+	'You are a technical recruiter. Evaluate resumes for skill matching.\n\n' +
+	'MATCHING RULES:\n' +
+	'- Accept related technologies (Next.js implies React)\n' +
+	'- Accept variations (Node = Node.js, AWS = Amazon Web Services)\n' +
+	'- Accept abbreviations (JS = JavaScript, TS = TypeScript)\n' +
+	'- Look for skills in projects, experience, and skills sections\n' +
+	'- Skills demonstrated in projects count as matched\n\n' +
+	'SCORING: score = (matched / total) * 100';
+
+function buildUserPrompt(jobRole: string, skills: string[], resumeText: string): string {
+	return `Job: ${jobRole}
+Required Skills: ${skills.join(', ')}
+Total: ${skills.length}
+
+Resume:
+${resumeText}
+
+For each skill, check if it or equivalent appears in resume. Return JSON only.`;
+}
 
 export async function scoreResume(input: {
 	jobRole: string;
 	requiredSkills: string[];
 	resumeText: string;
 }): Promise<ResumeScore> {
-	console.log('🔍 Scoring resume with:', {
-		jobRole: input.jobRole,
-		requiredSkills: input.requiredSkills,
-		resumeTextLength: input.resumeText.length
-	});
+	console.log('[SCORE] Processing:', input.jobRole, input.requiredSkills.length, 'skills');
 	
-	const model = getGroqChat();
-	
-	const system = new SystemMessage(
-		'You are a technical recruiter. Evaluate resumes based ONLY on skill matching using this formula:\n' +
-		'- Score = (matched_skills / total_required_skills) * 100\n' +
-		'- 100% match = 95-100 score\n' +
-		'- 80-99% match = 80-94 score\n' +
-		'- 60-79% match = 60-79 score\n' +
-		'- Below 60% match = proportional score\n' +
-		'Ignore overall profile, experience level, or unrelated skills. ONLY evaluate skill presence.'
-	);
-	
-	const user = new HumanMessage(
-		`Job: ${input.jobRole}\n` +
-		`Required Skills: ${input.requiredSkills.join(', ')}\n` +
-		`Total Required Skills: ${input.requiredSkills.length}\n` +
-		`Resume:\n${input.resumeText}\n\n` +
-		'INSTRUCTIONS:\n' +
-		'1. Check which required skills are mentioned in the resume (matched_skills)\n' +
-		'2. List required skills NOT found in the resume (missing_skills)\n' +
-		'3. Calculate: score = (matched_skills_count / total_required_skills) * 100\n' +
-		'4. If all skills matched, score should be 95-100\n' +
-		'5. Provide brief reasoning based on skill match percentage only\n\n' +
-		'Return JSON: { "score": number, "matched_skills": string[], "missing_skills": string[], "reason": string }'
-	);
+	const systemMsg = new SystemMessage(SYSTEM_PROMPT);
+	const userMsg = new HumanMessage(buildUserPrompt(
+		input.jobRole, 
+		input.requiredSkills, 
+		input.resumeText
+	));
 
-	const result = await model.invoke([system, user]);
-	const content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
-	console.log('🤖 LLM Response:', content);
-	
-	const parsed = parseJsonObject(content);
-	const validated = schema.parse(parsed);
-	console.log('✅ Final Score:', validated);
-	
-	return validated;
+	return invokeWithFallback(async (model) => {
+		try {
+			const structured = model.withStructuredOutput(ResumeScoreSchema, { name: 'score' });
+			const result = await structured.invoke([systemMsg, userMsg]);
+			console.log('[SCORE] Result:', result.score);
+			return result;
+		} catch (err) {
+			console.warn('[SCORE] Structured failed, trying raw parse');
+			const raw = await model.invoke([systemMsg, userMsg]);
+			const content = typeof raw.content === 'string' ? raw.content : JSON.stringify(raw.content);
+			const match = content.match(/\{[\s\S]*\}/);
+			if (!match) throw new Error('No JSON in response');
+			return ResumeScoreSchema.parse(JSON.parse(match[0]));
+		}
+	});
 }

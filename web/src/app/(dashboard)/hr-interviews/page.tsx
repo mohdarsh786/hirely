@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 // 1. HIGH-PERFORMANCE ICON IMPORTS
-import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
-import Play from 'lucide-react/dist/esm/icons/play';
-import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
+import { Loader2, Play, Sparkles } from 'lucide-react';
 
 // 2. DYNAMIC SUB-COMPONENTS
 const HowItWorksCard = dynamic(() => import('./_components/HowItWorks'), { ssr: true });

@@ -124,3 +124,32 @@ export interface DashboardStats {
   totalInterviews: number;
   avgAIScore: number;
 }
+
+export interface BatchCandidate {
+  id: string;
+  name: string;
+  email: string | null;
+  score: number | null;
+  matchedSkills: string[];
+  missingSkills: string[];
+  reason: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error?: string;
+  // Search result fields
+  similarity?: number;
+}
+
+export interface BatchUpload {
+  id: string;
+  jobId: string;
+  organizationId: string;
+  createdBy: string;
+  totalFiles: number;
+  processedCount: number;
+  status: 'processing' | 'completed' | 'failed';
+  candidateIds: string[];
+  createdAt: string;
+  completedAt: string | null;
+  job?: Job;
+}
+

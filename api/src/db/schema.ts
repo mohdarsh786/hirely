@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // ======================
 // Organizations Schema
@@ -70,6 +70,14 @@ export const candidates = pgTable('candidates', {
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+import { customType } from 'drizzle-orm/pg-core';
+
+const vector = customType<{ data: number[] }>({
+  dataType() {
+    return 'vector(384)';
+  },
+});
+
 export const resumes = pgTable('resumes', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	candidateId: uuid('candidate_id')
@@ -77,12 +85,13 @@ export const resumes = pgTable('resumes', {
 		.references(() => candidates.id, { onDelete: 'cascade' }),
 	fileUrl: text('file_url'),
 	extractedText: text('extracted_text'),
+    contentHash: text('content_hash'), // SHA-256 hash for deduplication
+    embedding: vector('embedding'), // PGVector 384 dimensions
 	parsedSkills: jsonb('parsed_skills').$type<{
 		matched_skills?: string[];
 		missing_skills?: string[];
 		reason?: string;
 	}>(),
-	embeddingId: text('embedding_id'),
 	aiScore: integer('ai_score'),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -116,9 +125,10 @@ export const hrDocuments = pgTable('hr_documents', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	title: text('title').notNull(),
 	content: text('content').notNull(),
-	embeddingId: text('embedding_id'),
+    embedding: vector('embedding'), // PGVector 384 dimensions
 	organizationId: uuid('organization_id')
-		.references(() => organizations.id, { onDelete: 'cascade' }), // Made nullable for backward compatibility
+		.notNull()
+		.references(() => organizations.id, { onDelete: 'cascade' }),
 	uploadedBy: uuid('uploaded_by'),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -127,9 +137,53 @@ export const chatLogs = pgTable('chat_logs', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	userId: uuid('user_id'),
 	organizationId: uuid('organization_id')
-		.references(() => organizations.id, { onDelete: 'cascade' }), // Made nullable for backward compatibility
+		.notNull()
+		.references(() => organizations.id, { onDelete: 'cascade' }),
 	question: text('question').notNull(),
 	answer: text('answer').notNull(),
 	sourceDocId: uuid('source_doc_id').references(() => hrDocuments.id, { onDelete: 'set null' }),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ======================
+// Batch Uploads Table
+// ======================
+
+export const batchUploads = pgTable('batch_uploads', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	jobId: uuid('job_id')
+		.notNull()
+		.references(() => jobs.id, { onDelete: 'cascade' }),
+	organizationId: uuid('organization_id')
+		.notNull()
+		.references(() => organizations.id, { onDelete: 'cascade' }),
+	createdBy: uuid('created_by').notNull(),
+	totalFiles: integer('total_files').notNull(),
+	processedCount: integer('processed_count').notNull().default(0),
+	status: text('status').notNull().default('processing'), // 'processing' | 'completed' | 'failed'
+	candidateIds: jsonb('candidate_ids').$type<string[]>().notNull().default([]),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	completedAt: timestamp('completed_at', { withTimezone: true }),
+});
+
+// ======================
+// Integrations Table
+// ======================
+
+export const integrations = pgTable('integrations', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	organizationId: uuid('organization_id')
+		.notNull()
+		.references(() => organizations.id, { onDelete: 'cascade' }),
+	userId: uuid('user_id').notNull(), // User who connected the account
+	provider: text('provider').notNull(), // 'gmail', 'drive'
+	email: text('email').notNull(), // Connected email address
+	accessToken: text('access_token').notNull(),
+	refreshToken: text('refresh_token'),
+	expiresAt: timestamp('expires_at', { withTimezone: true }),
+	metadata: jsonb('metadata').$type<any>(), // Store any extra provider-specific data (e.g. historyId for Gmail)
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+	unq: uniqueIndex('integrations_org_provider_email_idx').on(t.organizationId, t.provider, t.email),
+}));

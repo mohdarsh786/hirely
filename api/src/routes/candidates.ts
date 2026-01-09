@@ -7,6 +7,7 @@ import { requireRole } from '../middleware/requireRole';
 import { eq, desc } from 'drizzle-orm';
 import { badRequest, notFound, internalError, handleValidationError } from '../utils/errors';
 import { isValidUuid } from '../utils/validation';
+import { generateCandidateInsights } from '../ai/candidateInsights';
 
 const createSchema = z.object({
 	name: z.string().min(1).max(255),
@@ -16,8 +17,25 @@ const createSchema = z.object({
 	jobId: z.string().uuid().optional(), // Optional - can be null for ad-hoc interviews
 });
 
+import { searchCandidates } from '../services/search';
+
 export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 	.use('*', authMiddleware)
+
+    .post('/search', async (c) => {
+        try {
+            const { query } = await c.req.json();
+            if (!query) return badRequest(c, 'Query is required');
+            
+            const user = c.get('user');
+            const results = await searchCandidates(query, user.organizationId!);
+            
+            return c.json({ results });
+        } catch (error) {
+            return internalError(c, error, 'Search failed');
+        }
+    })
+
 	.post('/', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
 		try {
 			const body = await c.req.json();
@@ -145,5 +163,60 @@ export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 			return c.json({ success: true });
 		} catch (error) {
 			return internalError(c, error, 'Failed to delete candidate');
+		}
+	})
+	.get('/:id/insights', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
+		const id = c.req.param('id');
+
+		if (!isValidUuid(id)) {
+			return badRequest(c, 'Invalid candidate ID');
+		}
+
+		try {
+			const [candidateData] = await db
+				.select({
+					candidate: candidates,
+					job: jobs,
+				})
+				.from(candidates)
+				.leftJoin(jobs, eq(candidates.jobId, jobs.id))
+				.where(eq(candidates.id, id));
+
+			if (!candidateData) {
+				return notFound(c, 'Candidate');
+			}
+
+			const [resume] = await db
+				.select()
+				.from(resumes)
+				.where(eq(resumes.candidateId, id))
+				.orderBy(desc(resumes.createdAt))
+				.limit(1);
+
+			if (!resume?.extractedText) {
+				return badRequest(c, 'No resume found for this candidate');
+			}
+
+			const jobTitle = candidateData.job?.title || candidateData.candidate.appliedRole || 'Unknown Role';
+			const requiredSkills = candidateData.job?.requiredSkills || [];
+
+			const insights = await generateCandidateInsights({
+				resumeText: resume.extractedText,
+				jobTitle,
+				requiredSkills,
+				candidateName: candidateData.candidate.name,
+				score: resume.aiScore,
+				matchedSkills: resume.parsedSkills?.matched_skills,
+				missingSkills: resume.parsedSkills?.missing_skills,
+			});
+
+			return c.json({
+				candidateId: id,
+				candidateName: candidateData.candidate.name,
+				jobTitle,
+				insights,
+			});
+		} catch (error) {
+			return internalError(c, error, 'Failed to generate insights');
 		}
 	});

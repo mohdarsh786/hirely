@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { desc } from 'drizzle-orm';
+import { desc, eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { chatLogs, hrDocuments } from '../db/schema';
 import { authMiddleware, type AppVariables } from '../middleware/auth';
 import { answerFromDocs } from '../ai/hrRag';
-import { generateEmbedding, cosineSimilarity } from '../ai/embeddings';
+import { generateEmbedding } from '../ai/embeddings';
 import { badRequest, internalError, handleValidationError } from '../utils/errors';
 
 const querySchema = z.object({
@@ -13,29 +13,30 @@ const querySchema = z.object({
 	topK: z.number().int().positive().max(5).optional(),
 });
 
-type Doc = { id: string; title: string; content: string; embeddingId: string | null };
+async function findRelevantDocsByVector(question: string, organizationId: string, max: number): Promise<Omit<typeof hrDocuments.$inferSelect, 'embedding'>[]> {
+    const questionEmbedding = await generateEmbedding(question);
+    
+    // Use pgvector cosine distance (<=>)
+    // Order by similarity (1 - distance)
+    const similarity = sql<number>`1 - (${hrDocuments.embedding} <=> ${JSON.stringify(questionEmbedding)})`;
 
-async function findRelevantDocsByVector(question: string, docs: Doc[], max: number): Promise<Doc[]> {
-	// Generate embedding for the question
-	const questionEmbedding = await generateEmbedding(question);
+    const docs = await db.select({
+        id: hrDocuments.id,
+        title: hrDocuments.title,
+        content: hrDocuments.content,
+        organizationId: hrDocuments.organizationId,
+        uploadedBy: hrDocuments.uploadedBy,
+        createdAt: hrDocuments.createdAt
+    })
+    .from(hrDocuments)
+    .where(and(
+        eq(hrDocuments.organizationId, organizationId),
+        sql`1 - (${hrDocuments.embedding} <=> ${JSON.stringify(questionEmbedding)}) > 0.3` // Threshold
+    ))
+    .orderBy(desc(similarity))
+    .limit(max);
 
-	// Calculate similarity scores for all documents with embeddings
-	const scored = docs
-		.filter((doc) => doc.embeddingId) // Only docs with embeddings
-		.map((doc) => {
-			try {
-				const docEmbedding = JSON.parse(doc.embeddingId!);
-				const similarity = cosineSimilarity(questionEmbedding, docEmbedding);
-				return { doc, score: similarity };
-			} catch (error) {
-				console.error('Failed to parse embedding for doc', doc.id, error);
-				return { doc, score: 0 };
-			}
-		})
-		.sort((a, b) => b.score - a.score);
-
-	// Return top K most similar documents
-	return scored.slice(0, max).map((item) => item.doc);
+    return docs;
 }
 
 export const hrChatRoutes = new Hono<{ Variables: AppVariables }>()
@@ -48,22 +49,14 @@ export const hrChatRoutes = new Hono<{ Variables: AppVariables }>()
 			const data = querySchema.parse(body);
 			const topK = data.topK ?? 3;
 
-			const recent = await db
-				.select({ 
-					id: hrDocuments.id, 
-					title: hrDocuments.title, 
-					content: hrDocuments.content,
-					embeddingId: hrDocuments.embeddingId 
-				})
-				.from(hrDocuments)
-				.orderBy(desc(hrDocuments.createdAt))
-				.limit(25);
-
-			const relevant = await findRelevantDocsByVector(data.question, recent, topK);
+			// Use pgvector search directly
+			const relevant = await findRelevantDocsByVector(data.question, user.organizationId!, topK);
+            
 			const answer = await answerFromDocs({ question: data.question, docs: relevant });
 
 			await db.insert(chatLogs).values({
 				userId: user.id,
+                organizationId: user.organizationId!,
 				question: data.question,
 				answer,
 			});

@@ -16,7 +16,9 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { UploadResumeDoodle } from '@/components/doodles/UploadResumeDoodle';
 
-export default function ResumeUploadPage() {
+import { Suspense } from 'react';
+
+function ResumeUploadContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const candidateId = searchParams.get('candidateId');
@@ -145,5 +147,13 @@ export default function ResumeUploadPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function ResumeUploadPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResumeUploadContent />
+    </Suspense>
   );
 }
