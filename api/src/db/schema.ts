@@ -35,6 +35,25 @@ export const candidateInvites = pgTable('candidate_invites', {
 });
 
 // ======================
+// Jobs Table - Source of Truth for Requirements
+// ======================
+
+export const jobs = pgTable('jobs', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	organizationId: uuid('organization_id')
+		.notNull()
+		.references(() => organizations.id, { onDelete: 'cascade' }),
+	title: text('title').notNull(),
+	description: text('description'),
+	requiredSkills: jsonb('required_skills').$type<string[]>().notNull().default([]),
+	experienceYears: integer('experience_years'),
+	status: text('status').notNull().default('active'), // 'active' | 'closed' | 'draft'
+	createdBy: uuid('created_by').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ======================
 // Core Tables (with organization support)
 // ======================
 
@@ -43,9 +62,10 @@ export const candidates = pgTable('candidates', {
 	name: text('name').notNull(),
 	email: text('email'),
 	experienceYears: integer('experience_years'),
-	appliedRole: text('applied_role'),
+	jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }), // Link to job
+	appliedRole: text('applied_role'), // Derived from job or legacy
 	organizationId: uuid('organization_id')
-		.references(() => organizations.id, { onDelete: 'cascade' }), // Made nullable for backward compatibility
+		.references(() => organizations.id, { onDelete: 'cascade' }),
 	createdBy: uuid('created_by'),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -77,11 +97,18 @@ export const interviews = pgTable('interviews', {
 	candidateId: uuid('candidate_id')
 		.notNull()
 		.references(() => candidates.id, { onDelete: 'cascade' }),
+	scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+	durationMinutes: integer('duration_minutes'),
+	token: text('token').unique(), // For candidate access link
+	questions: jsonb('questions').$type<any[]>(), // Generated interview questions
+	answers: jsonb('answers').$type<any[]>(), // Candidate answers with scores
+	startedAt: timestamp('started_at', { withTimezone: true }),
+	completedAt: timestamp('completed_at', { withTimezone: true }),
 	transcript: jsonb('transcript').$type<TranscriptEntry[]>().notNull().default([]),
 	scores: jsonb('scores').$type<{ perQuestion?: number[] }>().notNull().default({}),
 	finalRating: integer('final_rating'),
 	aiFeedback: text('ai_feedback'),
-	status: text('status').notNull().default('in_progress'), // 'in_progress' | 'completed'
+	status: text('status').notNull().default('scheduled'), // 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

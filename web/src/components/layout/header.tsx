@@ -39,7 +39,7 @@ export const Header = memo(function Header() {
         <div className="flex items-center gap-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 transition-opacity hover:opacity-80">
+              <button className="flex items-center gap-3 transition-opacity hover:opacity-80" suppressHydrationWarning>
                 <div className="text-right">
                   <p className="text-sm font-medium text-slate-900">{displayName}</p>
                   <p className="text-xs text-slate-500">{roleLabel}</p>

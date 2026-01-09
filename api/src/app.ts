@@ -7,6 +7,7 @@ import { interviewsRoutes } from './routes/interviews';
 import { hrDocsRoutes } from './routes/hrDocs';
 import { hrChatRoutes } from './routes/hrChat';
 import { statsRoutes } from './routes/stats';
+import { jobsRoutes } from './routes/jobs';
 import organizationsRoutes from './routes/organizations';
 import invitesRoutes from './routes/invites';
 import publicRoutes from './routes/public';
@@ -27,6 +28,7 @@ export function createApp() {
 	}));
 
 	// Core routes
+	app.route('/jobs', jobsRoutes);
 	app.route('/candidates', candidatesRoutes);
 	app.route('/resumes', resumesRoutes);
 	app.route('/interview', interviewsRoutes);

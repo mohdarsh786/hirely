@@ -24,10 +24,8 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 	try {
 		const model = await getEmbedder();
 		
-		// Generate embedding
 		const output = await model(text, { pooling: 'mean', normalize: true });
 		
-		// Convert to array
 		const embedding = Array.from(output.data) as number[];
 		
 		return embedding;

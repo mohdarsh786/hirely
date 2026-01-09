@@ -2,72 +2,50 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
-import { api, type Interview } from '@/lib/api';
-import { RouteGuard } from '@/components/RouteGuard';
-import dynamic from 'next/dynamic';
+import { api } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
+import { InterviewsTable } from './_components/InterviewsTable';
+import type { Interview } from '@/types';
 
-const InterviewScheduleDoodle = dynamic(
-  () => import('@/components/doodles/InterviewScheduleDoodle').then(mod => mod.InterviewScheduleDoodle),
-  { ssr: false, loading: () => <div className="h-56 w-56" /> }
-);
-
-function InterviewsPageContent() {
+export default function InterviewsPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
-    loadInterviews();
-  }, []);
+    if (authLoading) return;
+    
+    if (!user) {
+      router.push('/login');
+      return;
+    }
 
-  const loadInterviews = async () => {
+    if (!['HR_ADMIN', 'RECRUITER'].includes(user.role)) {
+      router.push('/403');
+      return;
+    }
+
+    fetchInterviews();
+  }, [user, authLoading, router]);
+
+  const fetchInterviews = async () => {
     try {
       const data = await api.interviews.list();
       setInterviews(data.interviews || []);
     } catch (error) {
-      console.error('Failed to load interviews:', error);
+      console.error('Failed to fetch interviews:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this interview?')) {
-      try {
-        await api.interviews.delete(id);
-        await loadInterviews();
-      } catch (error) {
-        console.error('Failed to delete interview:', error);
-      }
-    }
-  };
-
-  const filteredInterviews = statusFilter === 'all'
-    ? interviews
-    : interviews.filter(i => i.status === statusFilter);
-
-  if (loading) {
+  if (authLoading || loading) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-slate-600">Loading...</div>
       </div>
     );
   }
@@ -76,93 +54,13 @@ function InterviewsPageContent() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">Interviews</h1>
-        <Link href="/candidates">
-          <Button>View Candidates</Button>
-        </Link>
-      </div>
-
-      <div className="mb-4">
-        <Select name="status" value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="in_progress">In Progress</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {filteredInterviews.length === 0 ? (
-        <div className="flex items-center justify-center rounded-lg border border-slate-200 bg-white p-12">
-          <div className="flex flex-col items-center text-center">
-            <InterviewScheduleDoodle className="h-56 w-56 opacity-80" />
-            <p className="mt-4 mb-4 text-sm text-slate-600">
-              No interviews found
-            </p>
-            <Link href="/candidates">
-              <Button>View Candidates</Button>
-            </Link>
-          </div>
+        <div className="flex gap-3">
+          <Link href="/interviews/new">
+            <Button className="bg-slate-900 hover:bg-slate-800">Schedule Interview</Button>
+          </Link>
         </div>
-      ) : (
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Candidate</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredInterviews.map((interview) => (
-                <TableRow key={interview.id}>
-                  <TableCell>
-                    <Link
-                      href={`/interviews/${interview.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      Candidate #{interview.candidateId}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={interview.status === 'completed' ? 'default' : 'secondary'}>
-                      {interview.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {interview.finalRating ? `${interview.finalRating}/10` : '—'}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(interview.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(interview.id)}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      </div>
+      <InterviewsTable initialData={interviews} />
     </div>
-  );
-}
-
-export default function InterviewsPage() {
-  return (
-    <RouteGuard allowedRoles={['HR_ADMIN', 'RECRUITER']}>
-      <InterviewsPageContent />
-    </RouteGuard>
   );
 }

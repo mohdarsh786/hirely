@@ -78,40 +78,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const initAuth = async () => {
       try {
-        const { data } = await getUser();
-        if (!mounted) return;
-        
-        if (data?.user) {
-          let organizationId: string | undefined;
-          
-          const cachedOrgId = storage.get('org_id');
-          if (cachedOrgId) {
-            organizationId = cachedOrgId;
-          } else {
-            try {
-              const orgData = await api.organizations.getMyOrg();
-              organizationId = orgData.organization?.id;
-              if (organizationId) {
-                storage.set('org_id', organizationId);
-              }
-            } catch {}
-          }
-
-          if (mounted) {
-            setUser({
-              id: data.user.id,
-              email: data.user.email ?? null,
-              role: extractRole(data.user),
-              organizationId,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Auth init error:', error);
-      } finally {
-        if (mounted) {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
           setLoading(false);
+          return;
         }
+
+        // Fire these in parallel!
+        const [orgData] = await Promise.all([
+          api.organizations.getMyOrg().catch(() => null),
+          // any other initial data
+        ]);
+
+        setUser({
+          id: user.id,
+          email: user.email ?? null,
+          organizationId: orgData?.organization?.id,
+          role: extractRole(user)
+        });
+      } catch (error) {
+        // Silently handle auth errors for public pages
+        console.debug('Auth initialization skipped:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -123,31 +112,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       
       if (session?.user) {
-        const { data } = await getUser();
-        if (data?.user && mounted) {
-          let organizationId: string | undefined;
-          
-          const cachedOrgId = storage.get('org_id');
-          if (cachedOrgId) {
-            organizationId = cachedOrgId;
-          } else {
-            try {
-              const orgData = await api.organizations.getMyOrg();
-              organizationId = orgData.organization?.id;
-              if (organizationId) {
-                storage.set('org_id', organizationId);
-              }
-            } catch (e) {}
-          }
+        try {
+          const { data } = await getUser();
+          if (data?.user && mounted) {
+            let organizationId: string | undefined;
+            
+            const cachedOrgId = storage.get('org_id');
+            if (cachedOrgId) {
+              organizationId = cachedOrgId;
+            } else {
+              try {
+                const orgData = await api.organizations.getMyOrg();
+                organizationId = orgData.organization?.id;
+                if (organizationId) {
+                  storage.set('org_id', organizationId);
+                }
+              } catch (e) {}
+            }
 
-          if (mounted) {
-            setUser({
-              id: data.user.id,
-              email: data.user.email ?? null,
-              role: extractRole(data.user),
-              organizationId,
-            });
+            if (mounted) {
+              setUser({
+                id: data.user.id,
+                email: data.user.email ?? null,
+                role: extractRole(data.user),
+                organizationId,
+              });
+            }
           }
+        } catch (error) {
+          // Silently handle auth errors
+          console.debug('Auth state change error:', error);
+          setUser(null);
         }
       } else {
         setUser(null);

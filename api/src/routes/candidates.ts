@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client';
-import { candidates, resumes, interviews } from '../db/schema';
+import { candidates, resumes, interviews, jobs } from '../db/schema';
 import { authMiddleware, type AppVariables } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { eq, desc } from 'drizzle-orm';
@@ -13,6 +13,7 @@ const createSchema = z.object({
 	email: z.string().email().optional(),
 	experienceYears: z.number().int().min(0).optional(),
 	appliedRole: z.string().min(1).max(255).optional(),
+	jobId: z.string().uuid().optional(), // Optional - can be null for ad-hoc interviews
 });
 
 export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
@@ -23,13 +24,34 @@ export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 			const data = createSchema.parse(body);
 			const user = c.get('user');
 
+			if (!user.organizationId) {
+				return badRequest(c, 'User must belong to an organization');
+			}
+
+			let job = null;
+			let appliedRole = data.appliedRole || null;
+
+			// If jobId provided, verify job exists and belongs to organization
+			if (data.jobId) {
+				const [jobData] = await db.select().from(jobs).where(eq(jobs.id, data.jobId));
+
+				if (!jobData || jobData.organizationId !== user.organizationId) {
+					return badRequest(c, 'Invalid job ID');
+				}
+
+				job = jobData;
+				appliedRole = job.title; // Auto-populate from job
+			}
+
 			const [candidate] = await db
 				.insert(candidates)
 				.values({
 					name: data.name,
 					email: data.email ?? null,
 					experienceYears: data.experienceYears ?? null,
-					appliedRole: data.appliedRole ?? null,
+					jobId: data.jobId ?? null,
+					appliedRole: appliedRole,
+					organizationId: user.organizationId,
 					createdBy: user.id,
 				})
 				.returning();
@@ -38,7 +60,7 @@ export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 				return internalError(c, 'Insert failed', 'Failed to create candidate');
 			}
 
-			return c.json({ candidate }, 201);
+			return c.json({ candidate, job }, 201);
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				return handleValidationError(c, error);
@@ -49,11 +71,20 @@ export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 	.get('/', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
 		try {
 			const list = await db
-				.select()
+				.select({
+					candidate: candidates,
+					job: jobs,
+				})
 				.from(candidates)
+				.leftJoin(jobs, eq(candidates.jobId, jobs.id))
 				.orderBy(desc(candidates.createdAt));
-			
-			return c.json({ candidates: list });
+
+			return c.json({
+				candidates: list.map((row) => ({
+					...row.candidate,
+					job: row.job,
+				})),
+			});
 		} catch (error) {
 			return internalError(c, error, 'Failed to fetch candidates');
 		}
@@ -66,12 +97,16 @@ export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 		}
 
 		try {
-			const [candidate] = await db
-				.select()
+			const [candidateData] = await db
+				.select({
+					candidate: candidates,
+					job: jobs,
+				})
 				.from(candidates)
+				.leftJoin(jobs, eq(candidates.jobId, jobs.id))
 				.where(eq(candidates.id, id));
 			
-			if (!candidate) {
+			if (!candidateData) {
 				return notFound(c, 'Candidate');
 			}
 
@@ -80,7 +115,12 @@ export const candidatesRoutes = new Hono<{ Variables: AppVariables }>()
 				db.select().from(interviews).where(eq(interviews.candidateId, id)).orderBy(desc(interviews.createdAt)),
 			]);
 
-			return c.json({ candidate, resumes: candidateResumes, interviews: candidateInterviews });
+			return c.json({
+				candidate: candidateData.candidate,
+				job: candidateData.job,
+				resumes: candidateResumes,
+				interviews: candidateInterviews,
+			});
 		} catch (error) {
 			return internalError(c, error, 'Failed to fetch candidate');
 		}

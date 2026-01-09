@@ -1,5 +1,21 @@
 import { supabase } from './supabase';
 import { apiCache } from './cache';
+import type { 
+  Candidate, 
+  Resume, 
+  HRDocument, 
+  ChatLog, 
+  DashboardStats 
+} from '@/types';
+import type {
+  Job,
+  CreateJobData,
+  CreateCandidateData,
+  ProcessResumeData,
+  Interview,
+  CreateInterviewData,
+  TranscriptEntry
+} from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -22,8 +38,8 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
-interface RequestOptions extends RequestInit {
-  cache?: boolean;
+interface RequestOptions extends Omit<RequestInit, 'cache'> {
+  useCache?: boolean;
   cacheTTL?: number;
 }
 
@@ -31,7 +47,7 @@ async function request<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { cache: shouldCache = false, cacheTTL = 30000, ...fetchOptions } = options;
+  const { useCache: shouldCache = false, cacheTTL = 30000, ...fetchOptions } = options;
   const cacheKey = `${endpoint}:${JSON.stringify(fetchOptions.body || {})}`;
 
   // Check cache for GET requests
@@ -76,15 +92,38 @@ async function request<T>(
 }
 
 export const api = {
+  jobs: {
+    list: () => request<{ jobs: Job[] }>('/jobs', { useCache: true }),
+    get: (id: string) => request<{ job: Job }>(`/jobs/${id}`, { useCache: true }),
+    create: (data: CreateJobData) =>
+      request<{ job: Job }>('/jobs', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<CreateJobData>) =>
+      request<{ job: Job }>(`/jobs/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/jobs/${id}`, {
+        method: 'DELETE',
+      }),
+    getSkillsByTitle: (title: string) =>
+      request<{ skills: string[] }>(`/jobs/skills/by-title/${encodeURIComponent(title)}`, {
+        useCache: true,
+      }),
+  },
+
   candidates: {
-    list: () => request<{ candidates: Candidate[] }>('/candidates', { cache: true }),
+    list: () => request<{ candidates: Candidate[] }>('/candidates', { useCache: true }),
     get: (id: string) =>
-      request<{ candidate: Candidate; resumes: Resume[]; interviews: Interview[] }>(
+      request<{ candidate: Candidate; job?: Job; resumes: Resume[]; interviews: Interview[] }>(
         `/candidates/${id}`,
-        { cache: true, cacheTTL: 60000 }
+        { useCache: true, cacheTTL: 60000 }
       ),
     create: (data: CreateCandidateData) =>
-      request<{ candidate: Candidate }>('/candidates', {
+      request<{ candidate: Candidate; job: Job }>('/candidates', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -95,7 +134,7 @@ export const api = {
   },
 
   resumes: {
-    list: () => request<{ resumes: Resume[] }>('/resumes', { cache: true }),
+    list: () => request<{ resumes: Resume[] }>('/resumes', { useCache: true }),
     upload: async (candidateId: string, file: File) => {
       const authHeader = await getAuthHeader();
       const formData = new FormData();
@@ -108,11 +147,6 @@ export const api = {
       });
       return res.json();
     },
-    process: (candidateId: string, data: ProcessResumeData) =>
-      request<{ resume: Resume }>(`/resumes/process/${candidateId}`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
     delete: (id: string) =>
       request<{ success: boolean }>(`/resumes/${id}`, {
         method: 'DELETE',
@@ -120,7 +154,12 @@ export const api = {
   },
 
   interviews: {
-    list: () => request<{ interviews: Interview[] }>('/interview', { cache: true }),
+    list: () => request<{ interviews: Interview[] }>('/interview', { useCache: true }),
+    create: (data: CreateInterviewData) =>
+      request<{ interview: Interview }>('/interview/create', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     start: (candidateId: string, role?: string) =>
       request<{ interviewId: string; question: string }>(
         `/interview/start/${candidateId}`,
@@ -149,7 +188,7 @@ export const api = {
         method: 'POST',
       }),
     get: (interviewId: string) =>
-      request<{ interview: Interview }>(`/interview/${interviewId}`, { cache: true, cacheTTL: 60000 }),
+      request<{ interview: Interview }>(`/interview/${interviewId}`, { useCache: true, cacheTTL: 60000 }),
     delete: (interviewId: string) =>
       request<{ success: boolean }>(`/interview/${interviewId}`, {
         method: 'DELETE',
@@ -288,62 +327,4 @@ export interface CandidateInvite {
   expiresAt: string | null;
   usedAt: string | null;
   createdAt: string;
-}
-
-export interface Candidate {
-  id: string;
-  name: string;
-  email: string | null;
-  experienceYears: number | null;
-  appliedRole: string | null;
-  createdAt: string;
-}
-
-export interface Resume {
-  id: string;
-  candidateId: string;
-  fileUrl: string | null;
-  extractedText: string | null;
-  parsedSkills: {
-    matched_skills?: string[];
-    missing_skills?: string[];
-    reason?: string;
-  } | null;
-  aiScore: number | null;
-  createdAt: string;
-}
-
-export interface Interview {
-  id: string;
-  candidateId: string;
-  status: 'in_progress' | 'completed';
-  transcript: TranscriptEntry[];
-  scores: { perQuestion?: number[] };
-  finalRating: number | null;
-  aiFeedback: string | null;
-  createdAt: string;
-}
-
-export type TranscriptEntry =
-  | { type: 'question'; text: string; at: string }
-  | { type: 'answer'; text: string; at: string }
-  | { type: 'eval'; score: number; feedback: string; at: string };
-
-export interface HRDocument {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-}
-
-export interface CreateCandidateData {
-  name: string;
-  email?: string;
-  experienceYears?: number;
-  appliedRole?: string;
-}
-
-export interface ProcessResumeData {
-  jobRole?: string;
-  requiredSkills: string[];
 }

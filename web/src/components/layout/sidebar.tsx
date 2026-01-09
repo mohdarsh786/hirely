@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Settings,
   Sparkles,
+  Briefcase,
 } from 'lucide-react';
 
 interface NavItem {
@@ -24,6 +25,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/candidates', label: 'Candidates', icon: Users, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/interviews', label: 'Interviews', icon: Video, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/hr-interviews', label: 'HR Interviews', icon: Sparkles, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },

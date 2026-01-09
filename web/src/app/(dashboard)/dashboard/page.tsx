@@ -353,23 +353,21 @@ export default function DashboardPage() {
   const { user, hasRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentCandidates, setRecentCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
-
   const isRecruiter = hasRole(['HR_ADMIN', 'RECRUITER']);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isRecruiter) {
-      api.stats
-        .dashboard()
-        .then((data) => {
-          setStats(data.stats);
-          setRecentCandidates(data.recentCandidates);
-        })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    if (!isRecruiter) return;
+    
+    setLoading(true);
+    api.stats
+      .dashboard()
+      .then((data) => {
+        setStats(data.stats);
+        setRecentCandidates(data.recentCandidates);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [isRecruiter]);
 
   if (loading) {

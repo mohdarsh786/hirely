@@ -51,6 +51,7 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
   const [currentFeedback, setCurrentFeedback] = useState<string>('');
   const [startTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const { data: interviewData, loading, error, refetch } = useApi<InterviewData>(
     () => api.interviews.get(interviewId),
@@ -68,6 +69,12 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
   }, [interviewData?.interview.candidateId]);
 
   useEffect(() => {
+    if (!loading && initialLoading) {
+      setInitialLoading(false);
+    }
+  }, [loading, initialLoading]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
@@ -83,14 +90,15 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
   const interview = interviewData?.interview;
   const candidate = candidateData?.candidate;
   
-  const transcript = interview?.transcript || [];
-  const questions = transcript.filter((t) => t.type === 'question' && t.text);
-  const answers = transcript.filter((t) => t.type === 'answer' && t.text);
-  const currentQuestionIndex = questions.length - 1;
+  // Use pre-generated questions from interview.questions
+  const questions = (interview as any)?.questions || [];
+  const answers = (interview as any)?.answers || [];
+  const currentQuestionIndex = answers.length;
   const currentQuestion = questions[currentQuestionIndex];
+  const hasMoreQuestions = currentQuestionIndex < questions.length;
 
   const isCompleted = interview?.finalRating !== null && interview?.finalRating !== undefined;
-  const progress = questions.length > 0 ? ((answers.length + 1) / questions.length) * 100 : 0;
+  const progress = questions.length > 0 ? (answers.length / questions.length) * 100 : 0;
 
   const handleSubmitAnswer = async () => {
     if (!answer.trim() || !interviewId) return;
@@ -106,13 +114,16 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
         setCurrentFeedback(response.evaluation.feedback);
       }
 
-      // Refetch interview data to get updated transcript
       await refetch();
       
-      // Clear answer input
       setAnswer('');
 
-      // Clear feedback after 3 seconds
+      // If completed, finalize the interview
+      if (response.isComplete) {
+        await api.interviews.finalize(interviewId);
+        await refetch();
+      }
+
       setTimeout(() => {
         setCurrentFeedback('');
       }, 3000);
@@ -148,7 +159,7 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
     }
   };
 
-  if (loading) {
+  if (initialLoading) {
     return <PageLoader text="Loading interview..." />;
   }
 
@@ -213,24 +224,22 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
 
             <div className="space-y-3">
               <h4 className="font-semibold">Question-by-Question Breakdown</h4>
-              {transcript
-                .filter((t) => t.type === 'eval')
-                .map((evaluation, idx) => (
-                  <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-sm">Question {idx + 1}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl font-bold text-green-600">
-                          {evaluation.score}/10
-                        </span>
-                      </div>
+              {answers.map((ans: any, idx: number) => (
+                <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-sm">Question {idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold text-green-600">
+                        {ans.score || 0}%
+                      </span>
                     </div>
-                    <Progress value={(evaluation.score || 0) * 10} className="h-2 mb-2" />
-                    {evaluation.feedback && (
-                      <p className="text-xs text-muted-foreground">{evaluation.feedback}</p>
-                    )}
                   </div>
-                ))}
+                  <Progress value={ans.score || 0} className="h-2 mb-2" />
+                  {ans.feedback && (
+                    <p className="text-xs text-muted-foreground">{ans.feedback}</p>
+                  )}
+                </div>
+              ))}
             </div>
 
             <div className="flex gap-2">
@@ -294,13 +303,13 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <CardTitle>Question {currentQuestionIndex + 1}</CardTitle>
-              <Badge variant="outline">Behavioral</Badge>
+              <Badge variant="outline">{currentQuestion?.difficulty || 'Medium'}</Badge>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-6">
-            <p className="text-lg leading-relaxed">{currentQuestion?.text}</p>
+            <p className="text-lg leading-relaxed whitespace-pre-wrap">{currentQuestion?.question}</p>
           </div>
 
           {currentFeedback && (
@@ -339,43 +348,28 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
               {answers.length} / {questions.length} questions answered
             </p>
 
-            {answers.length >= questions.length - 1 ? (
-              <Button
-                onClick={handleCompleteInterview}
-                disabled={!answer.trim() || submitting}
-                size="lg"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    Complete Interview
-                    <CheckCircle className="h-4 w-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            ) : (
-              <Button
-                onClick={handleSubmitAnswer}
-                disabled={!answer.trim() || submitting}
-                size="lg"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    AI Evaluating...
-                  </>
-                ) : (
-                  <>
-                    Submit Answer
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            )}
+            <Button
+              onClick={handleSubmitAnswer}
+              disabled={!answer.trim() || submitting}
+              size="lg"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : hasMoreQuestions && answers.length < questions.length - 1 ? (
+                <>
+                  Next Question
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </>
+              ) : (
+                <>
+                  Complete Interview
+                  <CheckCircle className="h-4 w-4 ml-2" />
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
