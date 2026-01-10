@@ -35,14 +35,20 @@ Hirely is an AI-powered platform that automates recruitment. It helps HR teams f
 - **AI HR Assistant**  
   Chat with your database. Ask "Who knows React?" and get instant answers.
 
-- **Smart Resume Scoring**  
-  Rank resumes by context, not just keywords.
+- **Contextual Resume Scoring & Insights**  
+  Rank resumes (0-100) based on job requirements. Get detailed AI-generated insights on candidate strengths, weaknesses, and suggested interview questions.
+
+- **Seamless Integrations**  
+  Connect **Gmail** and **Google Drive** to automatically sync and process resumes from your emails and folders.
+
+- **Smart Batch Processing**  
+  Upload or sync dozens of resumes at once with real-time progress tracking and deduplication.
 
 - **AI Interviews**  
   Automated screening rounds with an AI interviewer.
 
-- **Dashboard**  
-  Manage candidates and jobs in one place.
+- **Centralized Dashboard**  
+  Manage candidates, track integration status, and view ranked applicants in one place.
 
 </td>
 <td width="45%" valign="top">
