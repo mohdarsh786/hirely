@@ -88,12 +88,12 @@ export function CandidateInsightModal({ isOpen, onClose, candidateId }: Candidat
                                 Key Strengths
                             </h4>
                             <div className="flex flex-wrap gap-2">
-                                {data.insights.strengths.map(skill => (
+                                {(data.insights.strengths || []).map(skill => (
                                     <Badge key={skill} className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200">
                                         {skill}
                                     </Badge>
                                 ))}
-                                {data.insights.strengths.length === 0 && <span className="text-sm text-gray-500">None identified</span>}
+                                {(!data.insights.strengths || data.insights.strengths.length === 0) && <span className="text-sm text-gray-500">None identified</span>}
                             </div>
                         </div>
                         <div>
@@ -102,12 +102,12 @@ export function CandidateInsightModal({ isOpen, onClose, candidateId }: Candidat
                                 Missing Requirements
                             </h4>
                             <div className="flex flex-wrap gap-2">
-                                {data.insights.weaknesses.map(skill => (
+                                {(data.insights.weaknesses || []).map(skill => (
                                     <Badge key={skill} className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200">
                                         {skill}
                                     </Badge>
                                 ))}
-                                {data.insights.weaknesses.length === 0 && <span className="text-sm text-gray-500">None identified</span>}
+                                {(!data.insights.weaknesses || data.insights.weaknesses.length === 0) && <span className="text-sm text-gray-500">None identified</span>}
                             </div>
                         </div>
                     </div>
@@ -118,7 +118,7 @@ export function CandidateInsightModal({ isOpen, onClose, candidateId }: Candidat
                             Suggested Interview Questions
                         </h4>
                         <ul className="space-y-2">
-                            {data.insights.suggested_interview_questions.map((q, i) => (
+                            {(data.insights.suggested_interview_questions || []).map((q, i) => (
                                 <li key={i} className="text-sm text-gray-600 pl-4 border-l-2 border-purple-200 bg-gray-50 py-2 pr-2 rounded-r">
                                     {q}
                                 </li>

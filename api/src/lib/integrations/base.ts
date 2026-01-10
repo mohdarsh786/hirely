@@ -27,6 +27,9 @@ export abstract class GoogleIntegrationBase {
   }
 
   async getTokens(code: string) {
+    const env = getEnv();
+    console.log('[OAuth] getTokens called with redirect URI:', env.GOOGLE_REDIRECT_URI);
+    console.log('[OAuth] Client ID prefix:', env.GOOGLE_OAUTH_CLIENT_ID?.substring(0, 20));
     const { tokens } = await this.oauth2Client.getToken(code);
     return tokens;
   }

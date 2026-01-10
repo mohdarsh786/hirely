@@ -7,7 +7,7 @@ import { RankedDashboard } from '@/components/batch/RankedDashboard';
 import { IntegrationSelector, type IntegrationType } from '@/components/integrations/IntegrationSelector';
 import { GmailConnect } from '@/components/integrations/GmailConnect';
 import { DriveConnect } from '@/components/integrations/DriveConnect';
-import { Loader2, Plus, Check, AlertCircle, ChevronRight, Clock, FileText, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, Check, AlertCircle, ChevronRight, Clock, FileText, RefreshCw, CheckCircle2, Mail, HardDrive, FolderOpen, Search, Unlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Job, BatchCandidate, BatchUpload } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -36,6 +36,13 @@ function BatchUploadContent() {
   const [quickTitle, setQuickTitle] = useState('');
   const [quickSkills, setQuickSkills] = useState('');
   const [creating, setCreating] = useState(false);
+  const [integrationStatus, setIntegrationStatus] = useState<{
+    gmail: { id: string; email: string; metadata: any; updatedAt: string } | null;
+    drive: { id: string; email: string; metadata: any; updatedAt: string } | null;
+  }>({ gmail: null, drive: null });
+  const [driveFolders, setDriveFolders] = useState<{ id: string; name: string }[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string>('');
+  const [gmailSearchQuery, setGmailSearchQuery] = useState('resume OR cv OR application');
 
   const searchParams = useSearchParams();
 
@@ -66,6 +73,37 @@ function BatchUploadContent() {
       setHistory(historyRes.batches || []);
     } catch {
       // History table might not exist yet, ignore
+    }
+
+    // Load integration status
+    try {
+      const statusRes = await api.integrations.getStatus();
+      setIntegrationStatus(statusRes);
+      
+      // If Drive is connected, load folders
+      if (statusRes.drive) {
+        try {
+          const foldersRes = await api.integrations.getDriveFolders();
+          setDriveFolders(foldersRes.folders);
+        } catch {
+          // Ignore folder loading errors
+        }
+      }
+    } catch {
+      // Ignore if not available
+    }
+  };
+
+  const disconnectIntegration = async (provider: 'gmail' | 'drive') => {
+    try {
+      await api.integrations.disconnect(provider);
+      setIntegrationStatus(prev => ({ ...prev, [provider]: null }));
+      if (provider === 'drive') {
+        setDriveFolders([]);
+        setSelectedFolderId('');
+      }
+    } catch (err) {
+      setError(`Failed to disconnect ${provider}`);
     }
   };
 
@@ -105,20 +143,20 @@ function BatchUploadContent() {
         batchId = res.batchId;
         totalFiles = res.totalFiles;
       } else if (integrationType === 'gmail') {
-        const res = await api.integrations.syncGmail(selectedJobId);
+        const res = await api.integrations.syncGmail(selectedJobId, gmailSearchQuery);
         batchId = res.batchId;
         totalFiles = res.count;
         if (totalFiles === 0) {
-            setError('No new PDF resumes found in your Gmail inbox.');
+            setError(res.message || 'No emails with PDF attachments found matching your query.');
             setState('idle');
             return;
         }
       } else if (integrationType === 'drive') {
-        const res = await api.integrations.syncDrive(selectedJobId);
+        const res = await api.integrations.syncDrive(selectedJobId, selectedFolderId || undefined);
         batchId = res.batchId;
         totalFiles = res.count;
         if (totalFiles === 0) {
-            setError('No new PDF resumes found in your Google Drive.');
+            setError(res.message || 'No PDF files found in the selected folder.');
             setState('idle');
             return;
         }
@@ -293,11 +331,92 @@ function BatchUploadContent() {
              <DropZone onFilesSelected={setFiles} disabled={state !== 'idle'} />
         ) : (
              selectedJobId && (
-                 <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg flex flex-col items-center justify-center text-center">
+                 <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
                      {integrationType === 'gmail' ? (
-                        <GmailConnect jobId={selectedJobId} />
+                        integrationStatus.gmail ? (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-green-600">
+                                <CheckCircle2 className="w-5 h-5" />
+                                <span className="font-medium">Gmail Connected</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500">{integrationStatus.gmail.email}</span>
+                                <button
+                                  onClick={() => disconnectIntegration('gmail')}
+                                  className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+                                >
+                                  <Unlink className="w-3 h-3" /> Disconnect
+                                </button>
+                              </div>
+                            </div>
+                            
+                            {/* Gmail Search Query Input */}
+                            <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                                <Search className="w-4 h-4" />
+                                Search Query
+                              </label>
+                              <input
+                                type="text"
+                                value={gmailSearchQuery}
+                                onChange={(e) => setGmailSearchQuery(e.target.value)}
+                                placeholder="e.g., resume, cv, application, from:careers@company.com"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              <p className="text-xs text-gray-500">
+                                Use Gmail search syntax: "resume", "from:email@example.com", "subject:application"
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <GmailConnect jobId={selectedJobId} />
+                        )
                      ) : (
-                        <DriveConnect jobId={selectedJobId} />
+                        integrationStatus.drive ? (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-green-600">
+                                <CheckCircle2 className="w-5 h-5" />
+                                <span className="font-medium">Google Drive Connected</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500">{integrationStatus.drive.email}</span>
+                                <button
+                                  onClick={() => disconnectIntegration('drive')}
+                                  className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+                                >
+                                  <Unlink className="w-3 h-3" /> Disconnect
+                                </button>
+                              </div>
+                            </div>
+                            
+                            {/* Drive Folder Selection */}
+                            <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                                <FolderOpen className="w-4 h-4" />
+                                Select Folder
+                              </label>
+                              <select
+                                value={selectedFolderId}
+                                onChange={(e) => setSelectedFolderId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                              >
+                                <option value="">All folders (scan entire Drive)</option>
+                                {driveFolders.map((folder) => (
+                                  <option key={folder.id} value={folder.id}>
+                                    {folder.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-xs text-gray-500">
+                                Select a specific folder containing resumes, or scan all PDF files in your Drive.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <DriveConnect jobId={selectedJobId} />
+                        )
                      )}
                  </div>
              )
@@ -327,7 +446,13 @@ function BatchUploadContent() {
 
         <button
           onClick={startProcessing}
-          disabled={!selectedJobId || (integrationType === 'upload' && files.length === 0) || state !== 'idle'}
+          disabled={
+            !selectedJobId || 
+            (integrationType === 'upload' && files.length === 0) || 
+            (integrationType === 'gmail' && !integrationStatus.gmail) ||
+            (integrationType === 'drive' && !integrationStatus.drive) ||
+            state !== 'idle'
+          }
           className={cn(
             'w-full py-2.5 px-4 rounded-lg text-sm font-medium transition-all',
             'bg-gray-900 text-white hover:bg-gray-800',
@@ -339,7 +464,9 @@ function BatchUploadContent() {
           ) : (
              integrationType === 'upload' 
                 ? `Analyze ${files.length} Resume${files.length !== 1 ? 's' : ''}`
-                : `Sync & Analyze from ${integrationType === 'gmail' ? 'Gmail' : 'Drive'}`
+                : integrationType === 'gmail'
+                  ? (integrationStatus.gmail ? `Sync & Analyze from Gmail` : 'Connect Gmail First')
+                  : (integrationStatus.drive ? `Sync & Analyze from Drive` : 'Connect Drive First')
           )}
         </button>
       </div>

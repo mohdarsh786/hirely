@@ -50,13 +50,14 @@ export async function processResume(
 	let candidateEmail: string | null = null;
 
 	try {
-        // 1. Deduplication check
         const contentHash = await calculateFileHash(file);
         
         const existing = await db.select({ 
             id: candidates.id,
             name: candidates.name,
-            email: candidates.email
+            email: candidates.email,
+            score: resumes.aiScore,
+            skills: resumes.parsedSkills,
         })
         .from(resumes)
         .innerJoin(candidates, eq(resumes.candidateId, candidates.id))
@@ -68,16 +69,21 @@ export async function processResume(
 
         if (existing.length > 0 && existing[0]) {
             const dup = existing[0];
+            const skills = dup.skills as any || {};
+            
+            await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
+            
             const result: CandidateResult = {
                 id: dup.id,
                 name: dup.name,
                 email: dup.email,
-                score: null, // Could look up old score
-                matchedSkills: [],
-                missingSkills: [],
-                reason: 'Duplicate resume found',
+                score: dup.score,
+                matchedSkills: skills.matched_skills || [],
+                missingSkills: skills.missing_skills || [],
+                reason: skills.reason || 'Previously analyzed',
                 status: 'completed',
             };
+            console.log(`[BATCH] Cache hit for: ${dup.name} (score: ${dup.score})`);
             progress.candidates[index] = result;
             progress.processed++;
             return result;
@@ -234,12 +240,9 @@ export async function startBatch(
 	batchProgress.set(batchId, progress);
 
 	(async () => {
-		const concurrency = 3;
-		for (let i = 0; i < files.length; i += concurrency) {
-			const chunk = files.slice(i, i + concurrency);
-			await Promise.all(chunk.map((file, idx) => 
-				processResume(file, job, organizationId, userId, batchId, i + idx)
-			));
+		// Process sequentially to avoid rate limits
+		for (let i = 0; i < files.length; i++) {
+			await processResume(files[i], job, organizationId, userId, batchId, i);
 		}
 
 		const finalProgress = batchProgress.get(batchId);

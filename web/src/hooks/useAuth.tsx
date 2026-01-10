@@ -84,16 +84,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Fire these in parallel!
-        const [orgData] = await Promise.all([
-          api.organizations.getMyOrg().catch(() => null),
-          // any other initial data
-        ]);
+        // Try to get org, fall back to cached ID on network error
+        let organizationId: string | undefined;
+        const cachedOrgId = storage.get('org_id');
+        
+        try {
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+          );
+          const orgData = await Promise.race([
+            api.organizations.getMyOrg(),
+            timeoutPromise
+          ]) as any;
+          
+          organizationId = orgData?.organization?.id;
+          if (organizationId) {
+            storage.set('org_id', organizationId);
+          }
+        } catch (err) {
+          // Network error - use cached ID if available
+          console.debug('Org fetch failed, using cached:', cachedOrgId);
+          organizationId = cachedOrgId || undefined;
+        }
 
         setUser({
           id: user.id,
           email: user.email ?? null,
-          organizationId: orgData?.organization?.id,
+          organizationId,
           role: extractRole(user)
         });
       } catch (error) {

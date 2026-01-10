@@ -11,6 +11,7 @@ startScheduler();
 Bun.serve({
 	port: env.PORT,
 	fetch: app.fetch,
+	idleTimeout: 120, // 2 minutes for long-running sync operations
 });
 
 console.log(`API server listening on http://localhost:${env.PORT}`);

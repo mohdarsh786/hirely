@@ -4,7 +4,7 @@ import { getEnv } from '../env';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 // Models to rotate through for OpenRouter
-// These are free/cheap models with high availability
+// These are free/cheap models with high availability and structured output support
 const OPENROUTER_MODELS = [
     'xiaomi/mimo-v2-flash',
     'mistralai/devstral-2-2512',
@@ -22,8 +22,8 @@ export function getGroqChat(): BaseChatModel {
 		apiKey: env.GROQ_API_KEY,
 		model: env.GROQ_CHAT_MODEL,
 		temperature: 0,
-		maxTokens: 150, // Limit response length for faster evaluation
-		timeout: 10000, // 10 second timeout
+		maxTokens: 1024, // Increased for structured output
+		timeout: 30000, // 30 second timeout
 	});
 	
 	return primaryModel;
@@ -34,13 +34,15 @@ function getOpenRouterModel(modelName: string): BaseChatModel | null {
 	const env = getEnv();
 	
 	if (!env.OPENROUTER_API_KEY) {
+		console.warn('[LLM] OPENROUTER_API_KEY not set');
 		return null;
 	}
 	
 	return new ChatOpenAI({
-		openAIApiKey: env.OPENROUTER_API_KEY,
-		modelName: modelName,
+		apiKey: env.OPENROUTER_API_KEY, // Use 'apiKey' not 'openAIApiKey'
+		model: modelName,
 		temperature: 0,
+		maxTokens: 1024,
 		configuration: {
 			baseURL: 'https://openrouter.ai/api/v1',
 		},
@@ -87,3 +89,4 @@ export async function invokeWithFallback<T>(
 		throw lastError;
 	}
 }
+

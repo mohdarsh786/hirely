@@ -76,6 +76,17 @@ const vector = customType<{ data: number[] }>({
   dataType() {
     return 'vector(384)';
   },
+  toDriver(value: number[]): string {
+    // Convert JS array to PostgreSQL vector format: [1,2,3]
+    return `[${value.join(',')}]`;
+  },
+  fromDriver(value: unknown): number[] {
+    // Parse PostgreSQL vector format back to JS array
+    if (typeof value === 'string') {
+      return JSON.parse(value.replace(/^\[/, '[').replace(/\]$/, ']'));
+    }
+    return value as number[];
+  },
 });
 
 export const resumes = pgTable('resumes', {

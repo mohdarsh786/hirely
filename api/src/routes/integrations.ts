@@ -35,15 +35,69 @@ export const integrationsRoutes = new Hono<{ Variables: AppVariables }>()
 		}
 	})
 
+	.get('/status', async (c) => {
+		try {
+			const user = c.get('user');
+			if (!user.organizationId) {
+				return c.json({ gmail: null, drive: null });
+			}
+
+			const userIntegrations = await db
+				.select({
+					id: integrations.id,
+					provider: integrations.provider,
+					email: integrations.email,
+					metadata: integrations.metadata,
+					updatedAt: integrations.updatedAt,
+				})
+				.from(integrations)
+				.where(eq(integrations.organizationId, user.organizationId));
+
+			const gmail = userIntegrations.find(i => i.provider === 'gmail') || null;
+			const drive = userIntegrations.find(i => i.provider === 'drive') || null;
+
+			return c.json({ gmail, drive });
+		} catch (error) {
+			return internalError(c, error, 'Failed to get integration status');
+		}
+	})
+
+	.delete('/:provider', async (c) => {
+		const provider = c.req.param('provider');
+		const user = c.get('user');
+
+		if (provider !== 'gmail' && provider !== 'drive') {
+			return badRequest(c, 'Invalid provider. Must be "gmail" or "drive"');
+		}
+
+		try {
+			await db.delete(integrations).where(and(
+				eq(integrations.organizationId, user.organizationId!),
+				eq(integrations.provider, provider)
+			));
+
+			return c.json({ success: true, message: `${provider} disconnected` });
+		} catch (error) {
+			return internalError(c, error, 'Failed to disconnect integration');
+		}
+	})
+
 	.post('/callback', async (c) => {
 		try {
 			const { code, state } = await c.req.json();
+			console.log('[OAuth Callback] Received code:', code?.substring(0, 20) + '...');
+			console.log('[OAuth Callback] Received state:', state);
+			
             const stateObj = JSON.parse(state || '{}');
             const provider = stateObj.provider || 'gmail'; // Fallback for backward compat if needed
+			console.log('[OAuth Callback] Provider:', provider);
+			console.log('[OAuth Callback] JobId:', stateObj.jobId);
 
             const integrationService = provider === 'drive' ? driveIntegration : gmailIntegration;
 
+			console.log('[OAuth Callback] Exchanging code for tokens...');
 			const tokens = await integrationService.getTokens(code);
+			console.log('[OAuth Callback] Tokens received:', !!tokens.access_token);
 			
 			if (!tokens.access_token) {
 				return badRequest(c, 'Failed to retrieve access token');
@@ -92,6 +146,8 @@ export const integrationsRoutes = new Hono<{ Variables: AppVariables }>()
 	.post('/gmail/:jobId/sync', async (c) => {
 		const jobId = c.req.param('jobId');
 		const user = c.get('user');
+		const body = await c.req.json().catch(() => ({}));
+		const searchQuery = body.searchQuery as string | undefined;
 
 		try {
 			const [integration] = await db
@@ -106,15 +162,18 @@ export const integrationsRoutes = new Hono<{ Variables: AppVariables }>()
 				return badRequest(c, 'Gmail not connected');
 			}
 
-			const result = await syncIntegration(integration.id, jobId, user.organizationId!, user.id);
+			const result = await syncIntegration(integration.id, jobId, user.organizationId!, user.id, { searchQuery });
             
-            // Update active job ID
+            // Enable auto-sync after first manual sync
             await db.update(integrations)
-                .set({ metadata: { activeJobId: jobId }, updatedAt: new Date() })
+                .set({ 
+                    metadata: { activeJobId: jobId, searchQuery, syncEnabled: true }, 
+                    updatedAt: new Date() 
+                })
                 .where(eq(integrations.id, integration.id));
 
 			if (result.count === 0) {
-				return c.json({ message: 'No new resumes found', count: 0 });
+				return c.json({ message: 'No emails with PDF attachments found matching your query', count: 0 });
 			}
 
 			return c.json({ batchId: result.batchId, count: result.count });
@@ -123,9 +182,8 @@ export const integrationsRoutes = new Hono<{ Variables: AppVariables }>()
 			return internalError(c, error, 'Sync failed');
 		}
 	})
-    
-    .post('/drive/:jobId/sync', async (c) => {
-		const jobId = c.req.param('jobId');
+
+	.get('/drive/folders', async (c) => {
 		const user = c.get('user');
 
 		try {
@@ -141,15 +199,47 @@ export const integrationsRoutes = new Hono<{ Variables: AppVariables }>()
 				return badRequest(c, 'Drive not connected');
 			}
 
-			const result = await syncIntegration(integration.id, jobId, user.organizationId!, user.id);
+			// Set credentials
+			await driveIntegration.setCredentials(integration.accessToken, integration.refreshToken);
+			
+			const folders = await driveIntegration.listFolders();
+			return c.json({ folders });
+		} catch (error) {
+			return internalError(c, error, 'Failed to list folders');
+		}
+	})
+    
+    .post('/drive/:jobId/sync', async (c) => {
+		const jobId = c.req.param('jobId');
+		const user = c.get('user');
+		const body = await c.req.json().catch(() => ({}));
+		const folderId = body.folderId as string | undefined;
+
+		try {
+			const [integration] = await db
+				.select()
+				.from(integrations)
+				.where(and(
+					eq(integrations.organizationId, user.organizationId!),
+					eq(integrations.provider, 'drive')
+				));
+
+			if (!integration) {
+				return badRequest(c, 'Drive not connected');
+			}
+
+			const result = await syncIntegration(integration.id, jobId, user.organizationId!, user.id, { folderId });
             
-            // Update active job ID
+            // Enable auto-sync after first manual sync
             await db.update(integrations)
-                .set({ metadata: { activeJobId: jobId }, updatedAt: new Date() })
+                .set({ 
+                    metadata: { activeJobId: jobId, folderId, syncEnabled: true }, 
+                    updatedAt: new Date() 
+                })
                 .where(eq(integrations.id, integration.id));
 
 			if (result.count === 0) {
-				return c.json({ message: 'No new resumes found in Drive', count: 0 });
+				return c.json({ message: 'No PDF resumes found in the selected folder', count: 0 });
 			}
 
 			return c.json({ batchId: result.batchId, count: result.count });

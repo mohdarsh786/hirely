@@ -84,10 +84,13 @@ export const batchResumesRoutes = new Hono<{ Variables: AppVariables }>()
 	})
 
 	.post('/quick-job', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
+		console.log('[BATCH] Quick job creation started');
 		try {
 			const body = await c.req.json();
+			console.log('[BATCH] Quick job body parsed', body);
 			const data = quickJobSchema.parse(body);
 			const user = c.get('user');
+			console.log('[BATCH] Quick job user', user.id, user.role);
 
 			if (!user.organizationId) {
 				return badRequest(c, 'Please complete organization setup first');

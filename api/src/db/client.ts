@@ -12,16 +12,16 @@ const globalForDb = global as unknown as {
   conn: postgres.Sql | undefined;
 };
 
-// 1. Initialize the connection only if it doesn't exist
+// Initialize the connection only if it doesn't exist
 const queryClient = globalForDb.conn ?? postgres(env.DATABASE_URL, {
     max: 10,
     prepare: false, 
-    connect_timeout: 10,
-    // Add idle_timeout to close connections that aren't being used
-    idle_timeout: 20, 
+    connect_timeout: 30,       // 30 seconds to connect
+    idle_timeout: 60,          // Close idle connections after 60s
+    max_lifetime: 60 * 30,     // Max 30 minutes per connection
 });
 
-// 2. In development, save the connection to the global object
+// In development, save the connection to the global object
 if (process.env.NODE_ENV !== 'production') {
   globalForDb.conn = queryClient;
 }

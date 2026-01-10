@@ -168,7 +168,7 @@ export const api = {
   },
 
   resumes: {
-    list: () => request<{ resumes: Resume[] }>('/resumes', { useCache: true }),
+    list: (candidateId?: string) => request<{ resumes: Resume[] }>(candidateId ? `/resumes/${candidateId}` : '/resumes', { useCache: true }),
     upload: async (candidateId: string, file: File) => {
       const authHeader = await getAuthHeader();
       const formData = new FormData();
@@ -247,13 +247,26 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ code, state }),
       }),
-    syncGmail: (jobId: string) =>
-      request<{ batchId: string; count: number }>('/integrations/gmail/' + jobId + '/sync', {
+    syncGmail: (jobId: string, searchQuery?: string) =>
+      request<{ batchId: string; count: number; message?: string }>('/integrations/gmail/' + jobId + '/sync', {
         method: 'POST',
+        body: JSON.stringify({ searchQuery }),
       }),
-    syncDrive: (jobId: string) =>
-      request<{ batchId: string; count: number }>('/integrations/drive/' + jobId + '/sync', {
+    syncDrive: (jobId: string, folderId?: string) =>
+      request<{ batchId: string; count: number; message?: string }>('/integrations/drive/' + jobId + '/sync', {
         method: 'POST',
+        body: JSON.stringify({ folderId }),
+      }),
+    getDriveFolders: () =>
+      request<{ folders: { id: string; name: string }[] }>('/integrations/drive/folders'),
+    getStatus: () =>
+      request<{
+        gmail: { id: string; email: string; metadata: any; updatedAt: string } | null;
+        drive: { id: string; email: string; metadata: any; updatedAt: string } | null;
+      }>('/integrations/status'),
+    disconnect: (provider: 'gmail' | 'drive') =>
+      request<{ success: boolean; message: string }>(`/integrations/${provider}`, {
+        method: 'DELETE',
       }),
   },
 

@@ -3,17 +3,19 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 
 function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
-  const [message, setMessage] = useState('Connecting to Gmail...');
+  const [message, setMessage] = useState('Connecting...');
 
   useEffect(() => {
     const code = searchParams.get('code');
     const error = searchParams.get('error');
+    const state = searchParams.get('state') || undefined;
 
     if (error) {
       setStatus('error');
@@ -27,25 +29,61 @@ function CallbackContent() {
       return;
     }
 
-    // Exchange code for token
-    const state = searchParams.get('state') || undefined;
-    
-    api.integrations.callback(code, state)
-      .then((res) => {
+    // Parse state to show correct provider
+    let provider = 'Gmail';
+    try {
+      const stateObj = JSON.parse(state || '{}');
+      provider = stateObj.provider === 'drive' ? 'Google Drive' : 'Gmail';
+    } catch {}
+    setMessage(`Connecting to ${provider}...`);
+
+    // Wait for session and then call API
+    const processCallback = async () => {
+      // Wait for Supabase session with retries
+      let session = null;
+      for (let i = 0; i < 10; i++) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          session = data.session;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 500)); // Wait 500ms between retries
+      }
+
+      if (!session) {
+        setStatus('error');
+        setMessage('Session expired. Please log in again.');
+        return;
+      }
+
+      // Call API to exchange code with timeout
+      try {
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timed out')), 15000)
+        );
+        const res = await Promise.race([
+          api.integrations.callback(code, state),
+          timeoutPromise
+        ]) as { jobId?: string };
+        
         setStatus('success');
         setMessage('Successfully connected!');
         setTimeout(() => {
-            const redirectUrl = res.jobId 
-                ? `/batch-upload?jobId=${res.jobId}`
-                : '/batch-upload';
-            router.push(redirectUrl);
+          const redirectUrl = res.jobId 
+            ? `/batch-upload?jobId=${res.jobId}`
+            : '/batch-upload';
+          router.push(redirectUrl);
         }, 1500);
-      })
-      .catch((err) => {
+      } catch (err: any) {
+        console.error('[OAuth Callback] Error:', err);
         setStatus('error');
-        setMessage('Failed to connect account');
-        console.error(err);
-      });
+        setMessage(err.message || 'Connection timed out. Try reconnecting.');
+        // Auto-redirect after 3 seconds
+        setTimeout(() => router.push('/batch-upload'), 3000);
+      }
+    };
+
+    processCallback();
   }, [searchParams, router]);
 
   return (
@@ -90,3 +128,4 @@ export default function GoogleCallbackPage() {
     </Suspense>
   );
 }
+

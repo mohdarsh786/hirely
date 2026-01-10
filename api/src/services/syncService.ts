@@ -5,13 +5,19 @@ import { driveIntegration } from '../lib/integrations/drive';
 import { startBatch } from './batchService';
 import { eq, and } from 'drizzle-orm';
 
+interface SyncOptions {
+    folderId?: string;      // For Drive: specific folder to sync
+    searchQuery?: string;   // For Gmail: search query to filter emails
+}
+
 export async function syncIntegration(
     integrationId: string, 
     jobId: string, 
     organizationId: string, 
-    userId: string
+    userId: string,
+    options: SyncOptions = {}
 ): Promise<{ batchId: string | null, count: number }> {
-    console.log(`[SYNC] Starting sync for integration ${integrationId} on job ${jobId}`);
+    console.log(`[SYNC] Starting sync for integration ${integrationId} on job ${jobId}`, options);
 
     const [integration] = await db
         .select()
@@ -63,18 +69,12 @@ export async function syncIntegration(
     let files: File[] = [];
 
     if (integration.provider === 'gmail') {
-        let query = '';
-        const metadata = integration.metadata as { activeJobId?: string, lastSyncTime?: string } | null;
-        
-        if (metadata?.lastSyncTime) {
-            const date = new Date(metadata.lastSyncTime);
-            // Use epoch seconds for precise incremental sync to avoid re-scanning the whole day
-            const seconds = Math.floor(date.getTime() / 1000);
-            query = `after:${seconds}`;
-            console.log(`[SYNC] Incremental sync from: ${seconds}`);
-        }
+        // Use the provided searchQuery or fall back to default resume search
+        let query = options.searchQuery || 'resume OR cv OR application';
+        console.log(`[SYNC] Gmail search query: "${query}"`);
 
         const messages = await gmailIntegration.listMessages(query);
+        console.log(`[SYNC] Found ${messages.length} matching emails`);
 
         for (const msg of messages) {
             if (!msg.id) continue;
@@ -98,12 +98,24 @@ export async function syncIntegration(
             }
         }
     } else if (integration.provider === 'drive') {
-        const driveFiles = await driveIntegration.listPdfFiles();
-        for (const dFile of driveFiles) {
-            if (dFile.id) {
+        // Use the provided folderId to filter by folder
+        console.log(`[SYNC] Drive folder: ${options.folderId || 'All'}`);
+        const driveFiles = await driveIntegration.listPdfFiles(options.folderId);
+        console.log(`[SYNC] Found ${driveFiles.length} PDF files`);
+        
+        for (let i = 0; i < driveFiles.length; i++) {
+            const dFile = driveFiles[i];
+            if (!dFile.id) continue;
+            
+            console.log(`[SYNC] Downloading file ${i + 1}/${driveFiles.length}: ${dFile.name}`);
+            try {
                 const buffer = await driveIntegration.getFile(dFile.id);
                 const file = new File([buffer as any], dFile.name || 'resume.pdf', { type: 'application/pdf' });
                 files.push(file);
+                console.log(`[SYNC] Downloaded: ${dFile.name} (${buffer.byteLength} bytes)`);
+            } catch (downloadErr) {
+                console.error(`[SYNC] Failed to download ${dFile.name}:`, downloadErr);
+                // Continue with other files
             }
         }
     }
