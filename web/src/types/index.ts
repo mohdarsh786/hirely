@@ -52,6 +52,10 @@ export interface Interview {
   };
   finalRating: number | null;
   aiFeedback: string | null;
+  decision?: 'shortlisted' | 'rejected' | null;
+  decisionNote?: string | null;
+  decisionAt?: string | null;
+  decisionBy?: string | null;
   createdAt: string;
 }
 

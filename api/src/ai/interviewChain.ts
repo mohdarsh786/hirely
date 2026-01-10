@@ -105,14 +105,11 @@ export async function evaluateAnswer(input: {
 	const model = getGroqChat();
 	
 	const system = new SystemMessage(
-		'You are an interviewer evaluating responses. Be fair but critical. ALWAYS respond with valid JSON only.'
+		'You are an interviewer. Score 0-10 and give brief feedback. Respond ONLY with JSON: {"score": N, "feedback": "text"}'
 	);
 	
 	const user = new HumanMessage(
-		`Question: ${input.question}\n` +
-		`Answer: ${input.answer}\n\n` +
-		'Score 0-10. Provide brief feedback. Consider accuracy, completeness, clarity.\n' +
-		'Return ONLY valid JSON (no markdown, no extra text): { "score": <number>, "feedback": "<string>" }'
+		`Q: ${input.question}\nA: ${input.answer}\n\nRate and provide 1-sentence feedback.`
 	);
 
 	try {

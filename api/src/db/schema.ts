@@ -118,6 +118,10 @@ export const interviews = pgTable('interviews', {
 	finalRating: integer('final_rating'),
 	aiFeedback: text('ai_feedback'),
 	status: text('status').notNull().default('scheduled'), // 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+	decision: text('decision'), // 'shortlisted' | 'rejected' | null
+	decisionNote: text('decision_note'), // Optional message from recruiter
+	decisionAt: timestamp('decision_at', { withTimezone: true }),
+	decisionBy: uuid('decision_by'), // User ID who made the decision
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

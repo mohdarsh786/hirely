@@ -52,11 +52,19 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
   const [startTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [localInterviewData, setLocalInterviewData] = useState<InterviewData | null>(null);
 
   const { data: interviewData, loading, error, refetch } = useApi<InterviewData>(
     () => api.interviews.get(interviewId),
     { immediate: true }
   );
+
+  // Update local data when fetched data changes
+  useEffect(() => {
+    if (interviewData) {
+      setLocalInterviewData(interviewData);
+    }
+  }, [interviewData]);
 
   const [candidateData, setCandidateData] = useState<CandidateData | null>(null);
   
@@ -87,7 +95,7 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const interview = interviewData?.interview;
+  const interview = localInterviewData?.interview || interviewData?.interview;
   const candidate = candidateData?.candidate;
   
   // Use pre-generated questions from interview.questions
@@ -109,18 +117,22 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
     try {
       const response = await api.interviews.answer(interviewId, answer.trim());
       
+      // Update local state with the response data (contains updated interview)
+      if (response.interview) {
+        setLocalInterviewData({ interview: response.interview });
+      }
+      
       // Show feedback temporarily
       if (response.evaluation) {
         setCurrentFeedback(response.evaluation.feedback);
       }
-
-      await refetch();
       
       setAnswer('');
 
       // If completed, finalize the interview
       if (response.isComplete) {
         await api.interviews.finalize(interviewId);
+        // Only refetch on completion to get final rating
         await refetch();
       }
 
@@ -356,7 +368,7 @@ function LiveInterviewContent({ params }: { params: Promise<{ id: string }> }) {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Submitting...
+                  AI is evaluating...
                 </>
               ) : hasMoreQuestions && answers.length < questions.length - 1 ? (
                 <>

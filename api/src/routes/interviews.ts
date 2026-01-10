@@ -8,7 +8,7 @@ import { requireRole } from '../middleware/requireRole';
 import { evaluateAnswer, generateNextQuestion, generateInterviewQuestions } from '../ai/interviewChain';
 import { badRequest, notFound, internalError, handleValidationError } from '../utils/errors';
 import { isValidUuid } from '../utils/validation';
-import { sendEmail } from '../services/mail';
+import { sendEmail, sendInterviewCompletionEmail, sendInterviewInvitation, sendShortlistEmail, sendRejectionEmail } from '../services/mail';
 import crypto from 'crypto';
 
 const createInterviewSchema = z.object({
@@ -262,71 +262,15 @@ export const interviewsRoutes = new Hono<{ Variables: AppVariables }>()
 			}
 
 			// Send email to candidate with interview link
-			try {
-				const interviewUrl = `${process.env.WEB_URL || 'http://localhost:3000'}/interview/token/${token}`;
-				const scheduledDate = new Date(data.scheduledAt).toLocaleString('en-US', {
-					dateStyle: 'full',
-					timeStyle: 'short'
-				});
-
-				await sendEmail({
-					to: candidate.email!,
-					subject: 'Interview Invitation - Hirely',
-					htmlContent: `
-						<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-							<h2 style="color: #1e293b;">Interview Invitation</h2>
-							<p>Dear ${candidate.name},</p>
-							<p>You have been invited to participate in an AI-powered interview.</p>
-							
-							<div style="background-color: #f1f5f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
-								<p style="margin: 5px 0;"><strong>Position:</strong> ${candidate.appliedRole || 'Not specified'}</p>
-								<p style="margin: 5px 0;"><strong>Scheduled Time:</strong> ${scheduledDate}</p>
-								<p style="margin: 5px 0;"><strong>Duration:</strong> ${data.durationMinutes} minutes</p>
-							</div>
-
-							<p>Please click the button below to access your interview:</p>
-							
-							<div style="text-align: center; margin: 30px 0;">
-								<a href="${interviewUrl}" 
-								   style="background-color: #3b82f6; color: white; padding: 12px 30px; 
-								          text-decoration: none; border-radius: 6px; display: inline-block;">
-									Start Interview
-								</a>
-							</div>
-
-							<p style="color: #64748b; font-size: 14px;">
-								Or copy this link: <a href="${interviewUrl}">${interviewUrl}</a>
-							</p>
-
-							<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-								<p style="color: #64748b; font-size: 12px;">
-									This is an automated message from Hirely. Please do not reply to this email.
-								</p>
-							</div>
-						</div>
-					`,
-					textContent: `
-Interview Invitation
-
-Dear ${candidate.name},
-
-You have been invited to participate in an AI-powered interview.
-
-Position: ${candidate.appliedRole || 'Not specified'}
-Scheduled Time: ${scheduledDate}
-Duration: ${data.durationMinutes} minutes
-
-Please use this link to access your interview:
-${interviewUrl}
-
-This is an automated message from Hirely.
-					`
-				});
-				
-				console.log(`✅ Interview invitation sent to ${candidate.email}`);
-			} catch (emailError) {
-				// Don't fail the interview creation if email fails
-				console.error('Failed to send interview email:', emailError);
+			if (candidate.email && candidate.name) {
+				sendInterviewInvitation(
+					candidate.name,
+					candidate.email,
+					candidate.appliedRole || 'Position',
+					new Date(data.scheduledAt),
+					data.durationMinutes,
+					token
+				).catch(err => console.error('[Interview] Failed to send invitation email:', err));
 			}
 
 			return c.json({ interview }, 201);
@@ -335,6 +279,56 @@ This is an automated message from Hirely.
 				return handleValidationError(c, error);
 			}
 			return internalError(c, error, 'Failed to create interview');
+		}
+	})
+	.post('/:interviewId/send-invite', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
+		const interviewId = c.req.param('interviewId');
+		
+		if (!isValidUuid(interviewId)) {
+			return badRequest(c, 'Invalid interview ID');
+		}
+
+		try {
+			// Get interview details
+			const [interview] = await db
+				.select()
+				.from(interviews)
+				.where(eq(interviews.id, interviewId));
+
+			if (!interview) {
+				return notFound(c, 'Interview');
+			}
+
+			// Get candidate details
+			const [candidate] = await db
+				.select()
+				.from(candidates)
+				.where(eq(candidates.id, interview.candidateId));
+
+			if (!candidate) {
+				return notFound(c, 'Candidate');
+			}
+
+			if (!candidate.email || !candidate.name) {
+				return badRequest(c, 'Candidate does not have email or name');
+			}
+
+			// Send invitation email
+			await sendInterviewInvitation(
+				candidate.name,
+				candidate.email,
+				candidate.appliedRole || 'Position',
+				interview.scheduledAt || new Date(),
+				interview.durationMinutes || 30,
+				interview.token
+			);
+
+			return c.json({ 
+				success: true,
+				message: `Interview invitation sent to ${candidate.email}` 
+			});
+		} catch (error) {
+			return internalError(c, error, 'Failed to send interview invitation');
 		}
 	})
 	.get('/', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
@@ -460,6 +454,7 @@ This is an automated message from Hirely.
 	})
 	.post('/answer/:interviewId', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
 		const interviewId = c.req.param('interviewId');
+		const startTime = Date.now();
 		
 		if (!isValidUuid(interviewId)) {
 			return badRequest(c, 'Invalid interview ID');
@@ -486,11 +481,16 @@ This is an automated message from Hirely.
 
 			const currentQuestion = questions[currentQuestionIndex];
 
+			console.log(`[Interview] Starting AI evaluation for interview ${interviewId}...`);
+			const evalStart = Date.now();
+			
 			// Score the answer using AI
 			const evaluation = await evaluateAnswer({ 
 				question: currentQuestion.question, 
 				answer: data.answer 
 			});
+			
+			console.log(`[Interview] AI evaluation completed in ${Date.now() - evalStart}ms`);
 
 			// Save answer
 			answers.push({
@@ -533,6 +533,27 @@ This is an automated message from Hirely.
 				})
 				.where(eq(interviews.id, interviewId))
 				.returning();
+
+			// Send completion email if interview is complete
+			if (isComplete && updated) {
+				// Get candidate details
+				const [candidate] = await db
+					.select()
+					.from(candidates)
+					.where(eq(candidates.id, updated.candidateId));
+
+				if (candidate?.email && candidate?.name) {
+					// Send email asynchronously (don't wait for it)
+					sendInterviewCompletionEmail(
+						candidate.name,
+						candidate.email,
+						candidate.appliedRole || 'Position',
+						finalRating || 0
+					).catch(err => console.error('[Interview] Failed to send completion email:', err));
+				}
+			}
+
+			console.log(`[Interview] Total request time: ${Date.now() - startTime}ms`);
 
 			return c.json({ 
 				interview: updated, 
@@ -628,5 +649,93 @@ This is an automated message from Hirely.
 			});
 		} catch (error) {
 			return internalError(c, error, 'Failed to finalize interview');
+		}
+	})
+	.post('/:interviewId/decision', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
+		const interviewId = c.req.param('interviewId');
+		const user = c.get('user');
+		
+		console.log(`[Decision] Received decision request for interview ${interviewId}`);
+		
+		if (!isValidUuid(interviewId)) {
+			return badRequest(c, 'Invalid interview ID');
+		}
+
+		try {
+			const body = await c.req.json();
+			console.log('[Decision] Request body:', body);
+			
+			const { decision, note } = z.object({
+				decision: z.enum(['shortlisted', 'rejected']),
+				note: z.string().optional(),
+			}).parse(body);
+
+			// Get interview with candidate details
+			const [interview] = await db
+				.select()
+				.from(interviews)
+				.where(eq(interviews.id, interviewId));
+
+			if (!interview) {
+				return notFound(c, 'Interview');
+			}
+
+			if (interview.status !== 'completed') {
+				return badRequest(c, 'Interview must be completed before making a decision');
+			}
+
+			// Get candidate details
+			const [candidate] = await db
+				.select()
+				.from(candidates)
+				.where(eq(candidates.id, interview.candidateId));
+
+			if (!candidate) {
+				return notFound(c, 'Candidate');
+			}
+
+			// Update interview with decision
+			const [updated] = await db
+				.update(interviews)
+				.set({
+					decision,
+					decisionNote: note,
+					decisionAt: new Date(),
+					decisionBy: user?.id,
+				})
+				.where(eq(interviews.id, interviewId))
+				.returning();
+
+			// Send email to candidate
+			if (candidate.email && candidate.name) {
+				if (decision === 'shortlisted') {
+					sendShortlistEmail(
+						candidate.name,
+						candidate.email,
+						candidate.appliedRole || 'Position',
+						note
+					).catch(err => console.error('[Interview] Failed to send shortlist email:', err));
+				} else {
+					sendRejectionEmail(
+						candidate.name,
+						candidate.email,
+						candidate.appliedRole || 'Position',
+						note
+					).catch(err => console.error('[Interview] Failed to send rejection email:', err));
+				}
+			}
+
+			console.log(`[Interview] Decision made for interview ${interviewId}: ${decision}`);
+
+			return c.json({ 
+				success: true,
+				interview: updated,
+				message: `Candidate ${decision} and email notification sent`
+			});
+		} catch (error) {
+			if (error instanceof z.ZodError) {
+				return handleValidationError(c, error);
+			}
+			return internalError(c, error, 'Failed to process decision');
 		}
 	});

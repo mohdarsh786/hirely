@@ -5,21 +5,13 @@ transformersEnv.allowLocalModels = false;
 
 let embedder: any = null;
 
-/**
- * Initialize the embedding model (lazy loading)
- */
 async function getEmbedder() {
 	if (!embedder) {
-		// Use a small, efficient embedding model
 		embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
 	}
 	return embedder;
 }
 
-/**
- * Generate embeddings using Transformers.js
- * Uses all-MiniLM-L6-v2 model which produces 384-dimensional embeddings
- */
 export async function generateEmbedding(text: string): Promise<number[]> {
 	try {
 		const model = await getEmbedder();
@@ -35,9 +27,6 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 	}
 }
 
-/**
- * Calculate cosine similarity between two vectors
- */
 export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 	if (vecA.length !== vecB.length) {
 		throw new Error('Vectors must have same length');

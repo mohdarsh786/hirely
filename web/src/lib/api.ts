@@ -298,6 +298,15 @@ export const api = {
       request<{ success: boolean }>(`/interview/${interviewId}`, {
         method: 'DELETE',
       }),
+    sendInvite: (interviewId: string) =>
+      request<{ success: boolean; message: string }>(`/interview/${interviewId}/send-invite`, {
+        method: 'POST',
+      }),
+    makeDecision: (interviewId: string, decision: 'shortlisted' | 'rejected', note?: string) =>
+      request<{ success: boolean; message: string; interview: Interview }>(`/interview/${interviewId}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, note }),
+      }),
   },
 
   hrChat: {

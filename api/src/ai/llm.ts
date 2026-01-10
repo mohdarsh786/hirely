@@ -22,6 +22,8 @@ export function getGroqChat(): BaseChatModel {
 		apiKey: env.GROQ_API_KEY,
 		model: env.GROQ_CHAT_MODEL,
 		temperature: 0,
+		maxTokens: 150, // Limit response length for faster evaluation
+		timeout: 10000, // 10 second timeout
 	});
 	
 	return primaryModel;
