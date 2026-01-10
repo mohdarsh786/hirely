@@ -37,7 +37,6 @@ function OrganizationSettingsContent() {
         role: 'RECRUITER',
     });
 
-    // Get organizationId from user context
     const organizationId = user?.organizationId;
 
     useEffect(() => {

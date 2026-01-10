@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase, getUser } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -78,40 +78,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const initAuth = async () => {
       try {
-        const { data } = await getUser();
-        if (!mounted) return;
-        
-        if (data?.user) {
-          let organizationId: string | undefined;
-          
-          const cachedOrgId = storage.get('org_id');
-          if (cachedOrgId) {
-            organizationId = cachedOrgId;
-          } else {
-            try {
-              const orgData = await api.organizations.getMyOrg();
-              organizationId = orgData.organization?.id;
-              if (organizationId) {
-                storage.set('org_id', organizationId);
-              }
-            } catch {}
-          }
-
-          if (mounted) {
-            setUser({
-              id: data.user.id,
-              email: data.user.email ?? null,
-              role: extractRole(data.user),
-              organizationId,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Auth init error:', error);
-      } finally {
-        if (mounted) {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
           setLoading(false);
+          return;
         }
+
+        // Try to get org, fall back to cached ID on network error
+        let organizationId: string | undefined;
+        const cachedOrgId = storage.get('org_id');
+        
+        try {
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+          );
+          const orgData = await Promise.race([
+            api.organizations.getMyOrg(),
+            timeoutPromise
+          ]) as any;
+          
+          organizationId = orgData?.organization?.id;
+          if (organizationId) {
+            storage.set('org_id', organizationId);
+          }
+        } catch (err) {
+          // Network error - use cached ID if available
+          console.debug('Org fetch failed, using cached:', cachedOrgId);
+          organizationId = cachedOrgId || undefined;
+        }
+
+        setUser({
+          id: user.id,
+          email: user.email ?? null,
+          organizationId,
+          role: extractRole(user)
+        });
+      } catch (error) {
+        // Silently handle auth errors for public pages
+        console.debug('Auth initialization skipped:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -123,31 +129,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       
       if (session?.user) {
-        const { data } = await getUser();
-        if (data?.user && mounted) {
-          let organizationId: string | undefined;
-          
-          const cachedOrgId = storage.get('org_id');
-          if (cachedOrgId) {
-            organizationId = cachedOrgId;
-          } else {
-            try {
-              const orgData = await api.organizations.getMyOrg();
-              organizationId = orgData.organization?.id;
-              if (organizationId) {
-                storage.set('org_id', organizationId);
-              }
-            } catch (e) {}
-          }
+        try {
+          const { data } = await getUser();
+          if (data?.user && mounted) {
+            let organizationId: string | undefined;
+            
+            const cachedOrgId = storage.get('org_id');
+            if (cachedOrgId) {
+              organizationId = cachedOrgId;
+            } else {
+              try {
+                const orgData = await api.organizations.getMyOrg();
+                organizationId = orgData.organization?.id;
+                if (organizationId) {
+                  storage.set('org_id', organizationId);
+                }
+              } catch (e) {}
+            }
 
-          if (mounted) {
-            setUser({
-              id: data.user.id,
-              email: data.user.email ?? null,
-              role: extractRole(data.user),
-              organizationId,
-            });
+            if (mounted) {
+              setUser({
+                id: data.user.id,
+                email: data.user.email ?? null,
+                role: extractRole(data.user),
+                organizationId,
+              });
+            }
           }
+        } catch (error) {
+          // Silently handle auth errors
+          console.debug('Auth state change error:', error);
+          setUser(null);
         }
       } else {
         setUser(null);
@@ -160,19 +172,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    storage.remove('org_id');
+  const handleSignOut = useCallback(async () => {
+    // Immediately clear state for instant UI response
     setUser(null);
+    storage.remove('org_id');
     router.push('/login');
-  };
+    
+    // Sign out in background
+    supabase.auth.signOut().catch(console.error);
+  }, [router]);
 
-  const hasRole = (roles: Role[]) => {
+  const hasRole = useCallback((roles: Role[]) => {
     if (!user?.role) return false;
     return roles.includes(user.role);
-  };
+  }, [user?.role]);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     const { data } = await getUser();
     if (data?.user) {
       let organizationId: string | undefined;
@@ -193,10 +208,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         organizationId,
       });
     }
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, loading, signOut: handleSignOut, hasRole, refreshUser }),
+    [user, loading, handleSignOut, hasRole, refreshUser]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut: handleSignOut, hasRole, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -48,10 +48,8 @@ export default function OrganizationSetupPage() {
                 userId: user.id,
             });
 
-            // Refresh user to get updated organizationId
             await refreshUser();
 
-            // Redirect to dashboard after successful setup
             router.push('/dashboard');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create organization');

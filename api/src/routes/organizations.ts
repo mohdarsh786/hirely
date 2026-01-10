@@ -17,7 +17,6 @@ app.post('/register', async (c) => {
             return c.json({ error: 'Organization name and userId required' }, 400);
         }
 
-        // Create organization
         const [org] = await db.insert(organizations).values({
             name,
             domain: domain || null,
@@ -27,7 +26,6 @@ app.post('/register', async (c) => {
             return c.json({ error: 'Failed to create organization' }, 500);
         }
 
-        // Add creator as HR_ADMIN
         await db.insert(organizationMembers).values({
             organizationId: org.id,
             userId,

@@ -7,13 +7,12 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { HRChatDoodle } from '@/components/doodles/HRChatDoodle';
 
 interface Message {
@@ -23,6 +22,7 @@ interface Message {
 }
 
 export default function HRAssistantPage() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -60,9 +60,11 @@ export default function HRAssistantPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-slate-900">HR Assistant</h1>
-        <Link href="/hr-assistant/docs">
-          <Button variant="outline" size="sm">Manage Knowledge Base</Button>
-        </Link>
+        {user?.role === 'HR_ADMIN' && (
+          <Link href="/hr-assistant/docs">
+            <Button variant="outline" size="sm">Manage Knowledge Base</Button>
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

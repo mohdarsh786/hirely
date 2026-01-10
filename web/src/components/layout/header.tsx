@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useCallback } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -17,12 +18,12 @@ const roleLabels: Record<string, string> = {
   EMPLOYEE: 'Employee',
 };
 
-export function Header() {
+export const Header = memo(function Header() {
   const { user, signOut } = useAuth();
 
-  const handleLogout = async () => {
-    await signOut();
-  };
+  const handleLogout = useCallback(() => {
+    signOut();
+  }, [signOut]);
 
   const displayName = user?.email?.split('@')[0] || 'User';
   const initials = displayName.slice(0, 2).toUpperCase();
@@ -38,7 +39,7 @@ export function Header() {
         <div className="flex items-center gap-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 transition-opacity hover:opacity-80">
+              <button className="flex items-center gap-3 transition-opacity hover:opacity-80" suppressHydrationWarning>
                 <div className="text-right">
                   <p className="text-sm font-medium text-slate-900">{displayName}</p>
                   <p className="text-xs text-slate-500">{roleLabel}</p>
@@ -64,4 +65,4 @@ export function Header() {
       </div>
     </header>
   );
-}
+});

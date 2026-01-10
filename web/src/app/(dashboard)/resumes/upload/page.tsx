@@ -16,17 +16,15 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { UploadResumeDoodle } from '@/components/doodles/UploadResumeDoodle';
 
-export default function ResumeUploadPage() {
+import { Suspense } from 'react';
+
+function ResumeUploadContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const candidateId = searchParams.get('candidateId');
 
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [uploadedResume, setUploadedResume] = useState<any>(null);
-  const [skills, setSkills] = useState<string>('');
-  const [jobRole, setJobRole] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
@@ -58,33 +56,19 @@ export default function ResumeUploadPage() {
 
     setUploading(true);
     setError('');
+    setSuccess('');
     try {
       const result = await api.resumes.upload(candidateId, file);
-      setUploadedResume(result.resume);
-      setSuccess('Resume uploaded successfully');
+      setSuccess('Resume uploaded and scored successfully! Redirecting...');
+      
+      // Redirect to candidate detail page after 1.5 seconds
+      setTimeout(() => {
+        router.push(`/candidates/${candidateId}`);
+      }, 1500);
     } catch (error) {
       console.error('Failed to upload resume:', error);
       setError('Failed to upload resume. Please try again.');
-    } finally {
       setUploading(false);
-    }
-  };
-
-  const handleProcess = async () => {
-    if (!candidateId || !skills.trim()) return;
-
-    setProcessing(true);
-    try {
-      const skillList = skills.split(',').map((s) => s.trim()).filter(Boolean);
-      const result = await api.resumes.process(candidateId, {
-        jobRole: jobRole || undefined,
-        requiredSkills: skillList,
-      });
-
-      router.push(`/candidates/${candidateId}`);
-    } catch (error) {
-      console.error('Failed to process resume:', error);
-      setProcessing(false);
     }
   };
 
@@ -127,10 +111,10 @@ export default function ResumeUploadPage() {
         <Card className="shadow-sm border-slate-200">
           <CardHeader className="bg-slate-50/50">
             <CardTitle className="text-base font-semibold">
-              Step 1: Upload File
+              Upload Resume
             </CardTitle>
             <CardDescription>
-              Select a PDF or DOC file to upload
+              Select a PDF or DOC file - scoring happens automatically
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -141,7 +125,7 @@ export default function ResumeUploadPage() {
                 type="file"
                 accept=".pdf,.doc,.docx"
                 onChange={handleFileChange}
-                disabled={uploading || uploadedResume}
+                disabled={uploading}
               />
               {file && (
                 <p className="text-xs text-slate-500">
@@ -150,76 +134,26 @@ export default function ResumeUploadPage() {
               )}
             </div>
 
-            {uploadedResume ? (
-              <div className="flex items-center gap-2">
-                <Badge className="bg-green-600">Uploaded</Badge>
-                <p className="text-sm text-slate-600">Resume saved successfully</p>
-              </div>
-            ) : (
-              <Button onClick={handleUpload} disabled={!file || uploading} className="bg-slate-900 hover:bg-slate-800">
-                {uploading ? 'Uploading...' : 'Upload Resume'}
-              </Button>
-            )}
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <p className="text-sm text-blue-900">
+                ℹ️ Resume will be automatically scored against the job requirements when uploaded
+              </p>
+            </div>
+
+            <Button onClick={handleUpload} disabled={!file || uploading} className="bg-slate-900 hover:bg-slate-800">
+              {uploading ? 'Uploading & Scoring...' : 'Upload Resume'}
+            </Button>
           </CardContent>
         </Card>
-
-        {uploadedResume && (
-          <Card className="shadow-sm border-slate-200">
-            <CardHeader className="bg-blue-50/50">
-              <CardTitle className="text-base font-semibold">
-                Step 2: Process with AI
-              </CardTitle>
-              <CardDescription>
-                Analyze resume against job requirements
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="jobRole">Job Role (optional)</Label>
-                <Input
-                  id="jobRole"
-                  value={jobRole}
-                  onChange={(e) => setJobRole(e.target.value)}
-                  placeholder="Senior Software Engineer"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="skills">
-                  Required Skills <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="skills"
-                  name="requiredSkills"
-                  value={skills}
-                  onChange={(e) => setSkills(e.target.value)}
-                  placeholder="React, TypeScript, Node.js, PostgreSQL"
-                />
-                <p className="text-xs text-slate-500">
-                  Comma-separated list of skills to match
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleProcess}
-                  disabled={!skills.trim() || processing}
-                  className="bg-slate-900 hover:bg-slate-800"
-                >
-                  {processing ? 'Scoring...' : 'Score Resume'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push(`/candidates/${candidateId}`)}
-                  className="border-slate-300"
-                >
-                  Skip Analysis
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
+  );
+}
+
+export default function ResumeUploadPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResumeUploadContent />
+    </Suspense>
   );
 }

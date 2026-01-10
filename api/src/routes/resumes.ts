@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
-import { candidates, resumes } from '../db/schema';
+import { candidates, resumes, jobs } from '../db/schema';
 import { authMiddleware, type AppVariables } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { supabaseAdmin } from '../supabase';
@@ -15,11 +15,6 @@ import { isValidUuid, validateResumeFile } from '../utils/validation';
 
 const uploadSchema = z.object({
 	candidateId: z.string().uuid(),
-});
-
-const processSchema = z.object({
-	jobRole: z.string().min(1).max(255).optional(),
-	requiredSkills: z.array(z.string().min(1)).min(1),
 });
 
 export const resumesRoutes = new Hono<{ Variables: AppVariables }>()
@@ -44,20 +39,34 @@ export const resumesRoutes = new Hono<{ Variables: AppVariables }>()
 				return badRequest(c, 'Invalid file');
 			}
 
-			const [candidate] = await db.select().from(candidates).where(eq(candidates.id, candidateId));
-			if (!candidate) {
+			// Fetch candidate with job data (parallel optimization)
+			const [candidateData] = await db
+				.select({
+					candidate: candidates,
+					job: jobs,
+				})
+				.from(candidates)
+				.leftJoin(jobs, eq(candidates.jobId, jobs.id))
+				.where(eq(candidates.id, candidateId));
+
+			if (!candidateData?.candidate) {
 				return notFound(c, 'Candidate');
 			}
 
+			const { candidate, job } = candidateData;
+
+			console.log('📋 Candidate with job:', {
+				candidateId: candidate.id,
+				jobId: job?.id,
+				jobTitle: job?.title,
+				requiredSkills: job?.requiredSkills,
+			});
+
 			const text = await extractTextFromUpload(file);
 
-			const [resume] = await db.insert(resumes).values({ candidateId, extractedText: text }).returning();
-			if (!resume) {
-				return internalError(c, 'Insert failed', 'Failed to create resume');
-			}
-
+			// Upload to storage
 			const env = getEnv();
-			const path = `${candidateId}/${resume.id}/${file.name}`;
+			const path = `${candidateId}/${crypto.randomUUID()}/${file.name}`;
 			const bytes = new Uint8Array(await file.arrayBuffer());
 
 			const { error: uploadError } = await supabaseAdmin.storage
@@ -71,76 +80,56 @@ export const resumesRoutes = new Hono<{ Variables: AppVariables }>()
 
 			const url = supabaseAdmin.storage.from(env.SUPABASE_RESUME_BUCKET).getPublicUrl(path).data.publicUrl;
 
-			const [updated] = await db.update(resumes).set({ fileUrl: url }).where(eq(resumes.id, resume.id)).returning();
+			// Auto-score using job requirements
+			let scoringResult = null;
+			if (job?.requiredSkills && job.requiredSkills.length > 0) {
+				try {
+					scoringResult = await scoreResume({
+						jobRole: job.title,
+						requiredSkills: job.requiredSkills,
+						resumeText: text,
+					});
+					console.log('✅ Auto-scored resume:', scoringResult);
+				} catch (scoreError) {
+					console.error('⚠️ Scoring failed:', scoreError);
+					// Continue without score - don't fail the upload
+				}
+			} else {
+				console.warn('⚠️ No job skills defined - skipping scoring');
+			}
 
-			return c.json({ resume: updated }, 201);
+			// Generate embedding for the resume text
+			const embedding = await generateEmbedding(text);
+
+			// Insert resume with auto-generated score
+			const [resume] = await db
+				.insert(resumes)
+				.values({
+					candidateId,
+					extractedText: text,
+					fileUrl: url,
+					aiScore: scoringResult?.score ? Math.round(scoringResult.score) : null,
+					parsedSkills: scoringResult
+						? {
+								matched_skills: scoringResult.matched_skills,
+								missing_skills: scoringResult.missing_skills,
+								reason: scoringResult.reason,
+						  }
+						: null,
+					embeddingId: JSON.stringify(embedding),
+				})
+				.returning();
+
+			if (!resume) {
+				return internalError(c, 'Insert failed', 'Failed to create resume');
+			}
+
+			return c.json({ resume, scoring: scoringResult }, 201);
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				return handleValidationError(c, error);
 			}
 			return internalError(c, error, 'Failed to upload resume');
-		}
-	})
-	.post('/process/:candidateId', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
-		const candidateId = c.req.param('candidateId');
-
-		if (!isValidUuid(candidateId)) {
-			return badRequest(c, 'Invalid candidate ID');
-		}
-
-		try {
-			const body = await c.req.json();
-			const data = processSchema.parse(body);
-
-			const [candidate] = await db.select().from(candidates).where(eq(candidates.id, candidateId));
-			if (!candidate) {
-				return notFound(c, 'Candidate');
-			}
-
-			const [latest] = await db
-				.select()
-				.from(resumes)
-				.where(eq(resumes.candidateId, candidateId))
-				.orderBy(desc(resumes.createdAt))
-				.limit(1);
-
-			if (!latest) {
-				return notFound(c, 'Resume');
-			}
-
-			if (!latest.extractedText) {
-				return badRequest(c, 'Resume has no text content');
-			}
-
-			const result = await scoreResume({
-				jobRole: data.jobRole ?? candidate.appliedRole ?? 'Unknown',
-				requiredSkills: data.requiredSkills,
-				resumeText: latest.extractedText,
-			});
-
-			// Generate embedding for the resume text
-			const embedding = await generateEmbedding(latest.extractedText);
-
-			const [updated] = await db
-				.update(resumes)
-				.set({
-					aiScore: Math.round(result.score),
-					parsedSkills: {
-						matched_skills: result.matched_skills,
-						missing_skills: result.missing_skills,
-						reason: result.reason,
-					},
-					embeddingId: JSON.stringify(embedding) // Store as JSON string
-				})
-				.where(eq(resumes.id, latest.id))
-				.returning();
-
-			return c.json({ resume: updated, scoring: result });
-		} catch (error) {
-			if (error instanceof z.ZodError) {
-				return handleValidationError(c, error);
-			}
-			return internalError(c, error, 'Failed to process resume');
 		}
 	})
 	.get('/', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 const envSchema = z.object({
 	PORT: z.coerce.number().int().positive().default(3001),
 	CORS_ORIGIN: z.string().default('http://localhost:3000'),
+	WEB_URL: z.string().default('http://localhost:3000'),
 
 	SUPABASE_URL: z.string().url(),
 	SUPABASE_ANON_KEY: z.string().min(1),
@@ -15,8 +16,15 @@ const envSchema = z.object({
 	GROQ_API_KEY: z.string().min(1),
 	GROQ_CHAT_MODEL: z.string().min(1),
 
+	OPENROUTER_API_KEY: z.string().min(1).optional(),
+
 	BREVO_API_KEY: z.string().min(1).optional(),
 	BREVO_SMTP_API_KEY: z.string().min(1).optional(),
+
+	GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),
+	GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1),
+	GOOGLE_REDIRECT_URI: z.string().url(),
+	GOOGLE_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

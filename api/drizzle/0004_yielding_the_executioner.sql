@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "integrations_org_provider_email_idx" ON "integrations" USING btree ("organization_id","provider","email");

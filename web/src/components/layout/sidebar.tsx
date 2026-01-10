@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,9 @@ import {
   FileText,
   MessageSquare,
   Settings,
+  Sparkles,
+  Briefcase,
+  Upload,
 } from 'lucide-react';
 
 interface NavItem {
@@ -22,8 +26,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/batch-upload', label: 'Batch Upload', icon: Upload, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/candidates', label: 'Candidates', icon: Users, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/interviews', label: 'Interviews', icon: Video, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
+  { href: '/hr-interviews', label: 'HR Interviews', icon: Sparkles, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/resumes', label: 'Resumes', icon: FileText, allowedRoles: ['HR_ADMIN', 'RECRUITER'] },
   { href: '/hr-assistant', label: 'HR Assistant', icon: MessageSquare },
 ];
@@ -32,19 +39,25 @@ const adminItems: NavItem[] = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const pathname = usePathname();
   const { user, hasRole } = useAuth();
 
-  const filterByRole = (items: NavItem[]) =>
-    items.filter((item) => {
+  const visibleNavItems = useMemo(() => {
+    return navItems.filter((item) => {
       if (!item.allowedRoles) return true;
       if (!user?.role) return false;
       return hasRole(item.allowedRoles);
     });
+  }, [user?.role, hasRole]);
 
-  const visibleNavItems = filterByRole(navItems);
-  const visibleAdminItems = filterByRole(adminItems);
+  const visibleAdminItems = useMemo(() => {
+    return adminItems.filter((item) => {
+      if (!item.allowedRoles) return true;
+      if (!user?.role) return false;
+      return hasRole(item.allowedRoles);
+    });
+  }, [user?.role, hasRole]);
 
   return (
     <aside className="w-56 border-r border-slate-200 bg-white flex flex-col">
@@ -97,4 +110,4 @@ export function Sidebar() {
       )}
     </aside>
   );
-}
+});

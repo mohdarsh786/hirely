@@ -5,31 +5,34 @@ import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAuth } from '@/hooks/useAuth';
+import { Loader2 } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const { user, loading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.replace('/login');
     } else if (!loading && user && !user.organizationId) {
-      router.push('/organization-setup');
+      router.replace('/organization-setup');
     }
   }, [user, loading, router]);
 
+  // Show loading spinner while auth is initializing
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <p className="text-sm text-slate-500">Loading...</p>
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
       </div>
     );
   }
 
+  // Don't render dashboard if not authenticated
   if (!user) {
     return null;
   }
@@ -46,3 +49,4 @@ export default function DashboardLayout({
     </div>
   );
 }
+

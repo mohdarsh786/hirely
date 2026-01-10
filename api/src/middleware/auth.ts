@@ -1,6 +1,9 @@
 import type { Context, Next } from 'hono';
 import { supabaseForAuth } from '../supabase';
 import { unauthorized } from '../utils/errors';
+import { db } from '../db/client';
+import { organizationMembers } from '../db/schema';
+import { eq } from 'drizzle-orm';
 
 export type Role = 'HR_ADMIN' | 'RECRUITER' | 'EMPLOYEE';
 
@@ -8,6 +11,7 @@ export type AuthedUser = {
 	id: string;
 	email: string | null;
 	role: Role | null;
+	organizationId?: string;
 };
 
 export type AppVariables = {
@@ -59,10 +63,18 @@ export async function authMiddleware(c: Context<{ Variables: AppVariables }>, ne
 			return unauthorized(c, 'Invalid or expired token');
 		}
 
+		// Fetch organization membership
+		const [membership] = await db
+			.select()
+			.from(organizationMembers)
+			.where(eq(organizationMembers.userId, data.user.id))
+			.limit(1);
+
 		c.set('user', {
 			id: data.user.id,
 			email: data.user.email ?? null,
 			role: extractRole(data.user),
+			organizationId: membership?.organizationId,
 		});
 
 		await next();

@@ -45,7 +45,7 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 						title, 
 						content: text, 
 						uploadedBy: user.id,
-						embeddingId: null
+						organizationId: user.organizationId!
 					})
 					.returning();
 
@@ -57,7 +57,7 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 					.then(async (embedding) => {
 						await db
 							.update(hrDocuments)
-							.set({ embeddingId: JSON.stringify(embedding) })
+							.set({ embedding: embedding })
 							.where(eq(hrDocuments.id, doc.id));
 						console.log(`[HR_DOCS] Embedding generated for document ${doc.id}`);
 					})
@@ -77,7 +77,7 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 					title: data.title, 
 					content: data.content, 
 					uploadedBy: user.id,
-					embeddingId: null
+					organizationId: user.organizationId!
 				})
 				.returning();
 
@@ -89,7 +89,7 @@ export const hrDocsRoutes = new Hono<{ Variables: AppVariables }>()
 				.then(async (embedding) => {
 					await db
 						.update(hrDocuments)
-						.set({ embeddingId: JSON.stringify(embedding) })
+						.set({ embedding: embedding })
 						.where(eq(hrDocuments.id, doc.id));
 					console.log(`[HR_DOCS] Embedding generated for document ${doc.id}`);
 				})

@@ -10,16 +10,13 @@ export const statsRoutes = new Hono<{ Variables: AppVariables }>()
 	.use('*', authMiddleware)
 	.get('/dashboard', requireRole(['HR_ADMIN', 'RECRUITER']), async (c) => {
 		try {
-			// Get total candidates
 			const [candidateCount] = await db.select({ count: count() }).from(candidates);
-			
-			// Get total interviews
+
 			const [interviewCount] = await db.select({ count: count() }).from(interviews);
-			
-			// Get total resumes processed
+
 			const [resumeCount] = await db.select({ count: count() }).from(resumes);
-			
-			// Get average interview score
+
+
 			const [avgScore] = await db.select({ 
 				avg: avg(interviews.finalRating) 
 			}).from(interviews);

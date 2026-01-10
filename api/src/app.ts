@@ -7,9 +7,12 @@ import { interviewsRoutes } from './routes/interviews';
 import { hrDocsRoutes } from './routes/hrDocs';
 import { hrChatRoutes } from './routes/hrChat';
 import { statsRoutes } from './routes/stats';
+import { jobsRoutes } from './routes/jobs';
 import organizationsRoutes from './routes/organizations';
 import invitesRoutes from './routes/invites';
 import publicRoutes from './routes/public';
+import { batchResumesRoutes } from './routes/batchResumes';
+import { integrationsRoutes } from './routes/integrations';
 import { getEnv } from './env';
 
 export function createApp() {
@@ -27,11 +30,14 @@ export function createApp() {
 	}));
 
 	// Core routes
+	app.route('/jobs', jobsRoutes);
 	app.route('/candidates', candidatesRoutes);
 	app.route('/resumes', resumesRoutes);
 	app.route('/interview', interviewsRoutes);
 	app.route('/hr-docs', hrDocsRoutes);
 	app.route('/hr-chat', hrChatRoutes);
+	app.route('/batch', batchResumesRoutes);
+	app.route('/integrations', integrationsRoutes);
 	app.route('/stats', statsRoutes);
 
 	// Organization routes

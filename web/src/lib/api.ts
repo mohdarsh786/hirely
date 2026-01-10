@@ -1,4 +1,38 @@
 import { supabase } from './supabase';
+import { apiCache } from './cache';
+import type { 
+  Candidate, 
+  Resume, 
+  HRDocument, 
+  ChatLog, 
+  DashboardStats,
+  BatchCandidate,
+  BatchUpload,
+  Job,
+  CreateJobData,
+  CreateCandidateData,
+  ProcessResumeData,
+  Interview,
+  CreateInterviewData,
+  TranscriptEntry
+} from '@/types';
+
+export type { 
+  Candidate, 
+  Resume, 
+  HRDocument, 
+  ChatLog, 
+  DashboardStats,
+  BatchCandidate,
+  BatchUpload,
+  Job,
+  CreateJobData,
+  CreateCandidateData,
+  ProcessResumeData,
+  Interview,
+  CreateInterviewData,
+  TranscriptEntry
+};
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -21,19 +55,35 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
+interface RequestOptions extends Omit<RequestInit, 'cache'> {
+  useCache?: boolean;
+  cacheTTL?: number;
+}
+
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestOptions = {}
 ): Promise<T> {
+  const { useCache: shouldCache = false, cacheTTL = 30000, ...fetchOptions } = options;
+  const cacheKey = `${endpoint}:${JSON.stringify(fetchOptions.body || {})}`;
+
+  // Check cache for GET requests
+  if (shouldCache && (!fetchOptions.method || fetchOptions.method === 'GET')) {
+    const cached = apiCache.get<T>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
   const url = `${API_URL}${endpoint}`;
   const authHeader = await getAuthHeader();
 
   const res = await fetch(url, {
-    ...options,
+    ...fetchOptions,
     headers: {
       'Content-Type': 'application/json',
       ...authHeader,
-      ...options.headers,
+      ...fetchOptions.headers,
     },
   });
 
@@ -42,18 +92,60 @@ async function request<T>(
     throw new ApiError(error.message || error.error || 'Request failed', res.status, error);
   }
 
-  return res.json();
+  const data = await res.json();
+
+  // Cache successful GET requests
+  if (shouldCache && (!fetchOptions.method || fetchOptions.method === 'GET')) {
+    apiCache.set(cacheKey, data, cacheTTL);
+  }
+
+  // Invalidate related cache on mutations
+  if (fetchOptions.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchOptions.method)) {
+    const basePath = endpoint.split('/')[1];
+    apiCache.invalidate(basePath);
+  }
+
+  return data;
 }
 
 export const api = {
+  jobs: {
+    list: () => request<{ jobs: Job[] }>('/jobs', { useCache: true }),
+    get: (id: string) => request<{ job: Job }>(`/jobs/${id}`, { useCache: true }),
+    create: (data: CreateJobData) =>
+      request<{ job: Job }>('/jobs', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<CreateJobData>) =>
+      request<{ job: Job }>(`/jobs/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/jobs/${id}`, {
+        method: 'DELETE',
+      }),
+    getSkillsByTitle: (title: string) =>
+      request<{ skills: string[] }>(`/jobs/skills/by-title/${encodeURIComponent(title)}`, {
+        useCache: true,
+      }),
+  },
+
   candidates: {
-    list: () => request<{ candidates: Candidate[] }>('/candidates'),
+    list: () => request<{ candidates: Candidate[] }>('/candidates', { useCache: true }),
     get: (id: string) =>
-      request<{ candidate: Candidate; resumes: Resume[]; interviews: Interview[] }>(
-        `/candidates/${id}`
+      request<{ candidate: Candidate; job?: Job; resumes: Resume[]; interviews: Interview[] }>(
+        `/candidates/${id}`,
+        { useCache: true, cacheTTL: 60000 }
       ),
+    search: (query: string) => 
+        request<{ results: any[] }>('/candidates/search', {
+            method: 'POST',
+            body: JSON.stringify({ query })
+        }),
     create: (data: CreateCandidateData) =>
-      request<{ candidate: Candidate }>('/candidates', {
+      request<{ candidate: Candidate; job: Job }>('/candidates', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -61,10 +153,22 @@ export const api = {
       request<{ success: boolean }>(`/candidates/${id}`, {
         method: 'DELETE',
       }),
+    getInsights: (id: string) =>
+        request<{ 
+            candidateId: string;
+            candidateName: string;
+            jobTitle: string;
+            insights: {
+                why_matched: string; // The "reason" from scoring
+                suggested_interview_questions: string[];
+                strengths: string[]; // matched skills
+                weaknesses: string[]; // missing skills
+            }
+        }>(`/candidates/${id}/insights`, { useCache: true }),
   },
 
   resumes: {
-    list: () => request<{ resumes: Resume[] }>('/resumes'),
+    list: (candidateId?: string) => request<{ resumes: Resume[] }>(candidateId ? `/resumes/${candidateId}` : '/resumes', { useCache: true }),
     upload: async (candidateId: string, file: File) => {
       const authHeader = await getAuthHeader();
       const formData = new FormData();
@@ -77,19 +181,102 @@ export const api = {
       });
       return res.json();
     },
-    process: (candidateId: string, data: ProcessResumeData) =>
-      request<{ resume: Resume }>(`/resumes/process/${candidateId}`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
     delete: (id: string) =>
       request<{ success: boolean }>(`/resumes/${id}`, {
         method: 'DELETE',
       }),
   },
 
+  batch: {
+    upload: async (jobId: string, files: File[]) => {
+      const authHeader = await getAuthHeader();
+      const formData = new FormData();
+      formData.append('jobId', jobId);
+      for (const file of files) {
+        formData.append('files', file);
+      }
+      const res = await fetch(`${API_URL}/batch/upload`, {
+        method: 'POST',
+        headers: authHeader,
+        body: formData,
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: 'Upload failed' }));
+        throw new ApiError(error.message || error.error || 'Upload failed', res.status, error);
+      }
+      return res.json() as Promise<{ batchId: string; totalFiles: number }>;
+    },
+    createStatusStream: async (batchId: string) => {
+      const authHeader = await getAuthHeader();
+      const url = `${API_URL}/batch/${batchId}/status`;
+      const eventSource = new EventSource(url, { withCredentials: true });
+      return eventSource;
+    },
+    getStatusUrl: (batchId: string) => `${API_URL}/batch/${batchId}/status`,
+    getResults: (batchId: string) =>
+      request<{
+        batchId: string;
+        status: 'processing' | 'completed' | 'failed';
+        totalFiles: number;
+        processedCount: number;
+        candidates: BatchCandidate[];
+      }>(`/batch/${batchId}/results`),
+    quickCreateJob: (data: { title: string; requiredSkills: string[]; description?: string }) =>
+      request<{ job: Job }>('/batch/quick-job', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getHistory: () =>
+      request<{ batches: BatchUpload[] }>('/batch/history'),
+  },
+
+  integrations: {
+    getGmailAuthUrl: (jobId: string) =>
+      request<{ url: string }>('/integrations/gmail/auth-url', {
+        method: 'POST',
+        body: JSON.stringify({ jobId }),
+      }),
+    getDriveAuthUrl: (jobId: string) =>
+      request<{ url: string }>('/integrations/drive/auth-url', {
+        method: 'POST',
+        body: JSON.stringify({ jobId }),
+      }),
+    // Unified callback
+    callback: (code: string, state?: string) =>
+      request<{ success: boolean; email: string; jobId?: string }>('/integrations/callback', {
+        method: 'POST',
+        body: JSON.stringify({ code, state }),
+      }),
+    syncGmail: (jobId: string, searchQuery?: string) =>
+      request<{ batchId: string; count: number; message?: string }>('/integrations/gmail/' + jobId + '/sync', {
+        method: 'POST',
+        body: JSON.stringify({ searchQuery }),
+      }),
+    syncDrive: (jobId: string, folderId?: string) =>
+      request<{ batchId: string; count: number; message?: string }>('/integrations/drive/' + jobId + '/sync', {
+        method: 'POST',
+        body: JSON.stringify({ folderId }),
+      }),
+    getDriveFolders: () =>
+      request<{ folders: { id: string; name: string }[] }>('/integrations/drive/folders'),
+    getStatus: () =>
+      request<{
+        gmail: { id: string; email: string; metadata: any; updatedAt: string } | null;
+        drive: { id: string; email: string; metadata: any; updatedAt: string } | null;
+      }>('/integrations/status'),
+    disconnect: (provider: 'gmail' | 'drive') =>
+      request<{ success: boolean; message: string }>(`/integrations/${provider}`, {
+        method: 'DELETE',
+      }),
+  },
+
   interviews: {
-    list: () => request<{ interviews: Interview[] }>('/interview'),
+    list: () => request<{ interviews: Interview[] }>('/interview', { useCache: true }),
+    create: (data: CreateInterviewData) =>
+      request<{ interview: Interview }>('/interview/create', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     start: (candidateId: string, role?: string) =>
       request<{ interviewId: string; question: string }>(
         `/interview/start/${candidateId}`,
@@ -99,7 +286,15 @@ export const api = {
         }
       ),
     answer: (interviewId: string, answer: string) =>
-      request<{ nextQuestion: string | null; feedback: string; score: number }>(
+      request<{ 
+        nextQuestion: string | null; 
+        question: string | null;
+        feedback: string; 
+        score: number;
+        evaluation?: { score: number; feedback: string };
+        interview?: Interview;
+        isComplete?: boolean;
+      }>(
         `/interview/answer/${interviewId}`,
         {
           method: 'POST',
@@ -111,10 +306,19 @@ export const api = {
         method: 'POST',
       }),
     get: (interviewId: string) =>
-      request<{ interview: Interview }>(`/interview/${interviewId}`),
+      request<{ interview: Interview }>(`/interview/${interviewId}`, { useCache: true, cacheTTL: 60000 }),
     delete: (interviewId: string) =>
       request<{ success: boolean }>(`/interview/${interviewId}`, {
         method: 'DELETE',
+      }),
+    sendInvite: (interviewId: string) =>
+      request<{ success: boolean; message: string }>(`/interview/${interviewId}/send-invite`, {
+        method: 'POST',
+      }),
+    makeDecision: (interviewId: string, decision: 'shortlisted' | 'rejected', note?: string) =>
+      request<{ success: boolean; message: string; interview: Interview }>(`/interview/${interviewId}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, note }),
       }),
   },
 
@@ -187,7 +391,7 @@ export const api = {
   },
 
   invites: {
-    createCandidate: (data: { candidateId: string; email: string; expiresInDays?: number }) =>
+    createCandidate: (data: { candidateId: string; interviewId?: string; email: string; expiresInDays?: number }) =>
       request<{ invite: CandidateInvite; inviteLink: string }>('/invites/candidate', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -250,62 +454,4 @@ export interface CandidateInvite {
   expiresAt: string | null;
   usedAt: string | null;
   createdAt: string;
-}
-
-export interface Candidate {
-  id: string;
-  name: string;
-  email: string | null;
-  experienceYears: number | null;
-  appliedRole: string | null;
-  createdAt: string;
-}
-
-export interface Resume {
-  id: string;
-  candidateId: string;
-  fileUrl: string | null;
-  extractedText: string | null;
-  parsedSkills: {
-    matched_skills?: string[];
-    missing_skills?: string[];
-    reason?: string;
-  } | null;
-  aiScore: number | null;
-  createdAt: string;
-}
-
-export interface Interview {
-  id: string;
-  candidateId: string;
-  status: 'in_progress' | 'completed';
-  transcript: TranscriptEntry[];
-  scores: { perQuestion?: number[] };
-  finalRating: number | null;
-  aiFeedback: string | null;
-  createdAt: string;
-}
-
-export type TranscriptEntry =
-  | { type: 'question'; text: string; at: string }
-  | { type: 'answer'; text: string; at: string }
-  | { type: 'eval'; score: number; feedback: string; at: string };
-
-export interface HRDocument {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-}
-
-export interface CreateCandidateData {
-  name: string;
-  email?: string;
-  experienceYears?: number;
-  appliedRole?: string;
-}
-
-export interface ProcessResumeData {
-  jobRole?: string;
-  requiredSkills: string[];
 }

@@ -24,6 +24,7 @@ import {
   Plus,
   Briefcase,
   Search,
+  Sparkles,
 } from 'lucide-react';
 
 const WelcomeDoodle = dynamic(
@@ -200,6 +201,16 @@ function RecruiterDashboard({
               <CardDescription>Fast track your tasks</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
+              <Link href="/hr-interviews" className="block">
+                <Button variant="outline" className="w-full justify-between h-12 hover:bg-blue-50 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                  <span className="flex items-center gap-2 text-blue-700 font-medium">
+                    <Sparkles className="h-4 w-4" /> HR Interviews
+                  </span>
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
+                    NEW
+                  </Badge>
+                </Button>
+              </Link>
               <Link href="/interviews" className="block">
                 <Button variant="outline" className="w-full justify-between h-12 hover:bg-slate-50 border-slate-200">
                   <span className="flex items-center gap-2 text-slate-700"><Video className="h-4 w-4" /> Interviews</span>
@@ -342,23 +353,21 @@ export default function DashboardPage() {
   const { user, hasRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentCandidates, setRecentCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
-
   const isRecruiter = hasRole(['HR_ADMIN', 'RECRUITER']);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isRecruiter) {
-      api.stats
-        .dashboard()
-        .then((data) => {
-          setStats(data.stats);
-          setRecentCandidates(data.recentCandidates);
-        })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    if (!isRecruiter) return;
+    
+    setLoading(true);
+    api.stats
+      .dashboard()
+      .then((data) => {
+        setStats(data.stats);
+        setRecentCandidates(data.recentCandidates);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [isRecruiter]);
 
   if (loading) {
