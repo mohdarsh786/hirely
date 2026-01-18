@@ -85,7 +85,7 @@ Run Hirely locally in minutes.
 
 ```bash
 # 1. Clone
-git clone https://github.com/ArshCypherZ/hirely
+git clone https://github.com/mohdarsh786/hirely
 cd hirely
 
 # 2. Backend
