@@ -4,7 +4,7 @@
 
 **Intelligent Recruitment, Simplified.**
 
-[View Live Demo](https://hirelyy.vercel.app/)
+[View Live Demo(Current Status: Active Refactoring for Scalability. Redeployment in progress)](https://hirelyy.vercel.app/)
 
 <br />
 
